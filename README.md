@@ -1,4 +1,4 @@
-# # Implementing Cache Coherence Protocols in Multicore Systems
+# Implementing Cache Coherence Protocols in Multicore Systems
 
 TEAM: Bharathi Sridhar (bsridha2), Tanvi Daga (tdaga)		
 
@@ -40,35 +40,24 @@ PLATFORM CHOICE:
 We will use GHC machines for local development and testing, and then use the PSC machines so we can run traces on many cores. Using the PSC machines will also allow us to test the robustness of our implementations and provide a greater distribution of data for analysis. 
 
 # SCHEDULE
-Week
-Task(s)
-Week 1: 
-11/15 - 11/19
-Initial Research and Planning: Define project goals, scope, and specific requirements. 
-Research existing cache coherence protocols and implementation details.
-Choose appropriate simulation tools (like SST or gem5).
-Collect various trace files with various work distributions.
-Week 2: 
-11/20 - 11/26
-Develop the directory-based cache coherence scheme.
-Extend the directory-based scheme to include the limited pointer approach.
-Conduct initial tests to debug and verify the correct functioning of each implemented protocol.
-Week 3: 
-11/27 - 12/3
-Continue/finish implementing limited pointer approach.
-Further extend to implement the sparse directory scheme.
-Refine and optimize the protocols based on initial analysis results. 
-Work on Milestone Report.
-Week 4: 
-12/4 - 12/10
-Compare the optimized protocols against baseline models and each other.
-Experiment with different cache line sizes, associativity levels, and replacement policies.
-Perform advanced testing under high-load and diverse workload scenarios.
-Week 5: 
-12/11 - 12/15
-Work on Project Final Report.
-Prepare for Final Poster Session. 
-Buffer period for weeks 1 to 4 to finish up “plan to achieve” goals. 
-Use any extra time to work on “hope to achieve goals”. 
 
-
+| Week | Dates         | Task(s)                                                                                      |
+|------|---------------|----------------------------------------------------------------------------------------------|
+| 1    | 11/15 - 11/19 | - Define project goals, scope, and specific requirements.                                    |
+|      |               | - Research existing cache coherence protocols and implementation details.                    |
+|      |               | - Choose appropriate simulation tools (like SST or gem5).                                    |
+|      |               | - Collect various trace files with different work distributions.                             |
+| 2    | 11/20 - 11/26 | - Develop the directory-based cache coherence scheme.                                        |
+|      |               | - Extend the directory-based scheme to include the limited pointer approach.                 |
+|      |               | - Conduct initial tests to debug and verify the correct functioning of each implemented protocol. |
+| 3    | 11/27 - 12/3  | - Continue/finish implementing limited pointer approach.                                    |
+|      |               | - Further extend to implement the sparse directory scheme.                                   |
+|      |               | - Refine and optimize the protocols based on initial analysis results.                       |
+|      |               | - Work on Milestone Report.                                                                  |
+| 4    | 12/4 - 12/10  | - Compare the optimized protocols against baseline models and each other.                   |
+|      |               | - Experiment with different cache line sizes, associativity levels, and replacement policies.|
+|      |               | - Perform advanced testing under high-load and diverse workload scenarios.                   |
+| 5    | 12/11 - 12/15 | - Work on Project Final Report.                                                              |
+|      |               | - Prepare for Final Poster Session.                                                          |
+|      |               | - Buffer period for weeks 1 to 4 to finish up “plan to achieve” goals.                       |
+|      |               | - Use any extra time to work on “hope to achieve” goals.                                     |
