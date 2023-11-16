@@ -1,4 +1,4 @@
-# Implementing Optimized Cache Coherence Protocols in Multicore Systems
+# # Implementing Cache Coherence Protocols in Multicore Systems
 
 TEAM: Bharathi Sridhar (bsridha2), Tanvi Daga (tdaga)		
 
