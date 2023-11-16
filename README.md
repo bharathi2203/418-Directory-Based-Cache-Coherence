@@ -15,12 +15,14 @@ For our project, we aim to implement a few other cache coherence protocols which
 
 # Directory based scheme: 
 The directory-based cache coherence scheme maintains a centralized directory that tracks the state of each cache line in the system. Each directory entry indicates which processors have a copy of the cache line and whether it's been modified. A simple directory scheme has a large storage overhead, which limited pointer and sparse directory schemes can help reduce. 
+
 ![Project Diagram](https://github.com/bharathi2203/418-Directory-Based-Cache-Coherence/blob/main/images/image.png)
 
 # Limited pointer scheme:
 The limited pointer scheme is a variation of the directory-based approach, designed to reduce storage overhead. In a limited pointer scheme, rather than having a bit per processor and entry per memory line, a limited number of pointers are stored per directory line. This effectively tracks cache line ownership while conserving space, but it can be less efficient in scenarios with high cache sharing.
 # Sparse directory: 
 Sparse directories further optimize the directory-based approach by aligning the directory size with the cache size. Each entry in this scheme stores the tag of the cache line, rather than information about every processor. This significantly reduces the storage requirement compared to full and limited pointer directories but may lead to increased cache misses and memory accesses in certain scenarios.
+
 ![Project Diagram](https://github.com/bharathi2203/418-Directory-Based-Cache-Coherence/blob/main/images/image2.png)
 
 We plan to examine/compare the performance of each method on system performance by altering parameters like cache line size, associativity, and replacement policy. Our analysis will involve measuring key metrics such as the number of read and write hits and misses, the frequency of cache evictions, and the amount of interconnect traffic etc. 		
