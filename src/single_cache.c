@@ -11,7 +11,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <assert.h>
-#include "cachelab.h"
+#include "single_cache.h"
 
 /**
  * @brief Struct representing each line/block in a cache
