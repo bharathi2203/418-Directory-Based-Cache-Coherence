@@ -1,5 +1,5 @@
 /**
- * @file csim.c
+ * @file single_cache.c
  * @brief Cache Simulator
  * 
  * @author BHARATHI SRIDHAR <bsridha2@andrew.cmu.edu>
@@ -14,148 +14,24 @@
 #include "single_cache.h"
 
 /**
- * @brief Struct representing each line/block in a cache
- * 
- * Lines are implemented as linked lists.
-*/
-typedef struct line {
-    int lineNum;                            // represents line number
-    bool valid;                             // represents valid bit
-    unsigned long int tag;                  // represents tag bits
-    struct line *nextLine;                  // ptr to next line in same set
-    bool isDirty;                           // represents dirty bit for each cache line
-} line_t;
-
-/**
- * @brief Struct representing each set in a cache
- * 
-*/
-typedef struct set {
-    struct line *topLine;                     // head of linked list of lines in set
-    unsigned long linesFilled;                // tracks occupancy of set
-} set_t;
-
-/**
- * @brief Struct representing the cache
- * 
-*/
-typedef struct {
-    unsigned long S;                          // Number of set bits
-    unsigned long E;                          // Associativity: number of lines per set
-    unsigned long B;                          // Number of block bits
-    unsigned long hitCount;                   // number of hits
-    unsigned long missCount;                  // number of misses
-    unsigned long evictionCount;              // number of evictions
-    unsigned long dirtyEvictionCount;         // number of evictions of dirty lines
-    struct set **setList;                     // Array of Sets
-} cache; 
-
-/**
- * @brief Adds a new line to the linked lists of lines
- *        from a particular set.
- * 
-*/
-cache *addLine(cache *C, long setNo, int lineNo) {
-    struct set *currSet = C->setList[setNo];
-    struct line *new = malloc(sizeof(struct line));
-    new->isDirty = false;
-    new->tag = 0;
-    new->valid = false; 
-    new->nextLine = NULL;
-    new->lineNum = lineNo;
-    struct line *curr = currSet->topLine;
-    if (curr == NULL) {
-        currSet->topLine = new;
-    }
-    else {
-        while (curr->nextLine != NULL) {
-            curr = curr->nextLine;
-        }
-        curr->nextLine = new; 
-    }
-    currSet->linesFilled += 1;
-    return C;
-}
-
-/**
- * @brief Removes line and adds it to end of linked list
- *        given the set number and line number.
- * 
-*/
-cache *removeLine(cache *C, long setNo, int lineNo) {
-    struct set *currSet = C->setList[setNo];
-    if (currSet->linesFilled == 1) {
-        return C;
-    }
-    struct line *remLine; 
-    // Eviction case: remove topline, add it to end
-    if (currSet->topLine->lineNum == lineNo) {
-        remLine = currSet->topLine;
-        currSet->topLine = currSet->topLine->nextLine;
-        struct line *currLine = currSet->topLine;
-        while(currLine->nextLine != NULL) {
-            currLine = currLine->nextLine;
-        }
-        currLine->nextLine = remLine;
-        remLine->nextLine = NULL;
-        return C;
-    }
-    // hit/miss case: requires lines to be reordered
-    struct line *currLine = currSet->topLine;
-    while (currLine->nextLine != NULL) {
-        if (currLine->nextLine->lineNum == lineNo) {
-            remLine = currLine->nextLine;
-            currLine->nextLine = currLine->nextLine->nextLine;
-        }
-        else {
-            currLine = currLine->nextLine;
-        }
-    }
-    remLine->nextLine = NULL;
-    currLine->nextLine = remLine;
-    return C;
-}
-
-/**
- * @brief Returns first available line number for which there isn't 
- *        an allocated line in the set. 
-*/
-int getLineNum(cache *C, long setNo) {
-    struct set *currSet = C->setList[setNo];
-    for (int i = 0; i < (int)(C->E); i++) {
-        struct line *currLine = currSet->topLine;
-        if (currLine == NULL) {
-            return 0;
-        }
-        while (currLine->nextLine != NULL) {
-            if (currLine->lineNum == i) break;
-            currLine = currLine->nextLine;
-        }
-        if (currLine->lineNum != i) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-/**
  * @brief Create the cache with the parameters parsed. 
  * @param[in]       s       number of set bits in the address
  * @param[in]       e       number of lines in each set
  * @param[in]       b       number of block bits in the address
+ * @param[in]  processor_id processor number to identify cache 
  * @param[out]      new     newly allocated Cache.
  * 
 */
-cache *newCache(unsigned int s, unsigned int e, unsigned int b) {
+cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id) {
     unsigned int S = 1U << s;
     if (e == 0) {
-        //fprintf(stderr, "Invalid arguements.");
         return NULL;
     }
-    cache *new = malloc(sizeof(cache));
+    cache_t *new = malloc(sizeof(cache_t));
     if (new == NULL){
         return NULL;
     }
+    new->processor_id = processor_id;
     new->S = s;
     new->E = e;
     new->B = b;
@@ -163,192 +39,236 @@ cache *newCache(unsigned int s, unsigned int e, unsigned int b) {
     new->missCount = 0;
     new->evictionCount = 0;
     new->dirtyEvictionCount = 0;
-    //Initialize sets
-    struct set **sets  = malloc(S * sizeof(struct set *));
-    for(unsigned int i = 0; i < S; i++) {
-        sets[i] = malloc(sizeof(struct set));
+
+    // Initialize sets
+    new->setList = (set_t *)malloc(S * sizeof(set_t));
+    if (new->setList == NULL) {
+        free(new);
+        return NULL;
     }
-    for(unsigned int i = 0; i < S; i++) {
-        struct set *currSet = sets[i];
-        currSet->linesFilled = 0;
-        currSet->topLine = NULL;
+    for (unsigned int i = 0; i < S; i++) {
+        new->setList[i].lines = (line_t *)malloc(e * sizeof(line_t));
+        new->setList[i].lruCounter = (unsigned long *)malloc(e * sizeof(unsigned long));
+        // Initialize lines 
+        for (unsigned int j = 0; j < e; j++) {
+            new->setList[i].lines[j].lineNum = j;
+            new->setList[i].lines[j].valid = false;
+             new->setList[i].lines[j].isDirty = false;
+            new->setList[i].lruCounter[j] = 0;
+        }
     }
-    new->setList = sets;
-    return new;     
+
+    return new; 
 }
+
+/**
+ * @brief Simulates the execution of an instruction by a processor.
+ * 
+ * @param[in]   cache       Cache struct for a given processor
+ * @param[in]   line        Line from tracefile
+ */
+void executeInstruction(cache_t *cache, char *line) {
+    char instruction;
+    unsigned long address;
+    int processor_id;  // Used only for write instructions
+
+    sscanf(line, "%d %c %lx", &processor_id, &instruction, &address);
+
+    switch(instruction) {
+        case 'R':
+            readFromCache(cache, address);
+            break;
+        case 'W':
+            writeToCache(cache, address);
+            break;
+        default:
+            // Invalid instruction type
+            break;
+    }
+}
+
+/**
+ * @brief Update the counters to implement LRU 
+ * 
+ */
+void updateLRUCounter(set_t *set, unsigned long lineNum) {
+    // Increment all counters
+    for (unsigned int i = 0; i < set->maxLines; i++) {
+        set->lruCounter[i]++;
+    }
+    // Reset the counter for the accessed line
+    set->lruCounter[lineNum] = 0;
+}
+
+/**
+ * @brief Handles read operations from the processor's cache.
+ * 
+ * @param[in]   cache       Cache struct for a given processor
+ * @param[in]   address     Address of memory being read
+ *
+ */
+int readFromCache(cache_t *cache, unsigned long address) {
+    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
+    unsigned long tag = address >> (cache->B + cache->S);
+    set_t *set = &cache->setList[setIndex];
+    bool hit = false;
+    unsigned long hitLineIndex = 0;
+
+    // Check if the address is in cache
+    for (unsigned int i = 0; i < set->maxLines; i++) {
+        if (set->lines[i].valid && set->lines[i].tag == tag) {
+            // Cache hit
+            hit = true;
+            hitLineIndex = i;
+            break;
+        }
+    }
+
+    if (hit) {
+        cache->hitCount++;
+        updateLRUCounter(set, hitLineIndex);
+        return 0; 
+    } else {
+        cache->missCount++;
+        cacheMissHandler(cache, address, false); // Handle cache miss
+        return 1; 
+    }
+}
+
+
+/**
+ * @brief Handles write operations to the processor's cache.
+ * 
+ * @param[in]   cache       Cache struct for a given processor
+ * @param[in]   address     Address of memory being read
+ *
+ * @param[out]  status      Status of the write operation.
+ */
+int writeToCache(cache_t *cache, unsigned long address) {
+    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
+    unsigned long tag = address >> (cache->B + cache->S);
+    set_t *set = &cache->setList[setIndex];
+    bool hit = false;
+    unsigned long hitLineIndex = 0;
+
+    // Check if the address is in cache
+    for (unsigned int i = 0; i < set->maxLines; i++) {
+        if (set->lines[i].valid && set->lines[i].tag == tag) {
+            // Cache hit
+            hit = true;
+            hitLineIndex = i;
+            break;
+        }
+    }
+
+    if (hit) {
+        cache->hitCount++;
+        updateLRUCounter(set, hitLineIndex);
+        set->lines[hitLineIndex].isDirty = true;
+        return 0; // Successful write
+    } else {
+        cache->missCount++;
+        cacheMissHandler(cache, address, true); // Handle cache miss
+        // Indicates that a miss occurred and write is pending
+        return 1; 
+    }
+}
+
+
+/**
+ * @brief Manages cache miss scenarios.
+ * 
+ * @param[in]   cache       Cache struct for a given processor
+ * @param[in]   address     Address of memory being read
+ * 
+ */
+int cacheMissHandler(cache_t *cache, unsigned long address, bool isDirty) {
+    // Calculate set index and tag from the address
+    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
+    unsigned long tag = address >> (cache->B + cache->S);
+
+    // Get the corresponding set from the cache
+    set_t *set = &cache->setList[setIndex];
+
+    // Variables to track the least recently used line
+    unsigned long lruLineIndex = 0;
+    unsigned long maxLRUValue = 0;
+    bool setFull = true;
+
+    // Check each line in the set to find an empty line or the LRU line
+    for (unsigned int i = 0; i < set->maxLines; i++) {
+        if (!set->lines[i].valid) {
+            // An empty line is found
+            setFull = false;
+            lruLineIndex = i;
+            break;
+        } else if (set->lruCounter[i] > maxLRUValue) {
+            // Update LRU line information
+            maxLRUValue = set->lruCounter[i];
+            lruLineIndex = i;
+        }
+    }
+
+    // If the set is full and the selected line is dirty, write back to memory
+    if (setFull && set->lines[lruLineIndex].isDirty) {
+        // Write back the dirty line to memory (code not shown)
+        // This would involve memory write operations
+        cache->dirtyEvictionCount++;
+    }
+
+    // Evict the old line if the set is full
+    if (setFull) {
+        cache->evictionCount++;
+    }
+
+    // Update the LRU line with new data
+    set->lines[lruLineIndex].tag = tag;
+    set->lines[lruLineIndex].valid = true;
+    set->lines[lruLineIndex].isDirty = isDirty; // New data is not dirty yet
+    set->lines[lruLineIndex].state = SHARED;   // Initially in SHARED state
+
+    // Reset LRU counters
+    for (unsigned int i = 0; i < set->maxLines; i++) {
+        set->lruCounter[i]++;
+    }
+    set->lruCounter[lruLineIndex] = 0;
+
+    // Load the new block of data into the cache line
+    // This would typically involve fetching data from main memory or other caches
+
+    return 0;
+}
+
+
 
 /**
  * @brief Function prints every set, every line in the Cache.
  *        Useful for debugging!
  * 
 */
-void printCache(cache *C) {
-    fprintf(stderr, "\n\t\t\t\tPRINTING CACHE:");
-    struct set **sets = C->setList;
-    unsigned int S = 1U << (C->S);
-    for(unsigned int i = 0; i < S; i++) {
-        struct set *currSet = sets[i];
-        fprintf(stderr, "\nSET: %d \t Lines Filled: %ld", i, currSet->linesFilled);
-        struct line *currLine = currSet->topLine;
-        if (currLine == NULL) {
-            fprintf(stderr, "\tSET EMPTY! ");
-        }
-        else {
-            while (currLine != NULL) {
-                fprintf(stderr, "\nLineNum: %d \t V: %d \t Tag: %lu \t DirtyBit: %d", currLine->lineNum, currLine->valid, currLine->tag, currLine->isDirty);
-                currLine = currLine->nextLine;
-            }
+void printCache(cache_t *C) {
+    if (C == NULL) {
+        printf("Cache is NULL\n");
+        return;
+    }
+    printf("Cache Structure (Processor ID: %d)\n", C->processor_id);
+    printf("Total Sets: %lu, Lines per Set: %lu, Block Size: %lu\n", 
+           (1UL << C->S), C->E, (1UL << C->B));
+    printf("Hit Count: %lu, Miss Count: %lu, Eviction Count: %lu\n", 
+           C->hitCount, C->missCount, C->evictionCount);
+
+    for (unsigned long i = 0; i < (1UL << C->S); i++) {
+        printf("Set %lu:\n", i);
+        for (unsigned long j = 0; j < C->E; j++) {
+            line_t *line = &C->setList[i].lines[j];
+            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d\n", 
+                   j, line->tag, line->valid, line->isDirty, line->state);
         }
     }
-    fprintf(stderr, "\n\n\n\n");
 }
 
-/**
- * @brief Performs the L or Load operation.
- * 
-*/
-cache *loadUpdate(cache* C, unsigned long int addr, int size) {
-    //set selection
-    long address = (long int)addr;
-    long mask = (((~0L << (C->S + C->B))) & (~0L << (C->B))) ^ (~0L << (C->B));
-    long setNumber = ((address & mask) >> (C->B));
-    //line matching - is the word already in this set
-    bool isCacheHit = false;
-    struct line *currLine = (C->setList[setNumber])->topLine;
-    while (currLine != NULL) {
-        if (currLine->valid && currLine->tag == (long unsigned)(address >> (C->S + C->B))) { 
-            isCacheHit = true; 
-            C = removeLine(C, setNumber, currLine->lineNum);
-            break;
-        }
-        currLine = currLine->nextLine;
-    }
-    if (isCacheHit) {
-        C->hitCount += 1;
-    }
-    else {
-        //Find available line in set
-        struct line *freeLine;
-        C->missCount += 1;
-        if (C->setList[setNumber]->linesFilled < C->E) {
-            int newLineNum = getLineNum(C, setNumber); //get earliest available line number
-            assert(newLineNum != -1);
-            C = addLine(C, setNumber, newLineNum);
-            freeLine = (C->setList[setNumber])->topLine;
-            while (freeLine->nextLine != NULL) {
-                freeLine = freeLine->nextLine;
-            }
-            assert(freeLine->lineNum == newLineNum);
-        }
-        else {
-            C = removeLine(C, setNumber, ((C->setList[setNumber])->topLine)->lineNum);
-            freeLine = (C->setList[setNumber])->topLine;
-            while (freeLine->nextLine != NULL) {
-                freeLine = freeLine->nextLine;
-            }
-            C->evictionCount += 1;
-            if (freeLine->isDirty) {
-                C->dirtyEvictionCount += 1;
-            }
-        }
-        freeLine->valid = true;
-        freeLine->tag = (long unsigned)(address >> (C->S + C->B));
-        freeLine->isDirty = false;
-    }
-    return C;
-}
 
-/**
- * @brief Performs the S or Store operation.
- * 
-*/
-cache *storeUpdate(cache* C, unsigned long int addr, int size) {
-    //set selection
-    long address = (long int)addr;
-    long mask = (((~0L << (C->S + C->B))) & (~0L << (C->B))) ^ (~0L << (C->B));
-    long setNumber = ((address & mask) >> (C->B));
-    //line matching - is the word already in this set
-    bool isCacheHit = false;
-    struct line *currLine = (C->setList[setNumber])->topLine;
-    while (currLine != NULL) {
-        if (currLine->valid && currLine->tag == (long unsigned)(address >> (C->S + C->B))) { 
-            isCacheHit = true; 
-            C = removeLine(C, setNumber, currLine->lineNum);
-            currLine->isDirty = true;
-            break;
-        }
-        currLine = currLine->nextLine;
-    }
-    if (isCacheHit) {
-        C->hitCount += 1;
-    }
-    else {
-        //Find available line in set
-        struct line *freeLine;
-        C->missCount += 1;
-        if (C->setList[setNumber]->linesFilled < C->E) {
-            int newLineNum = getLineNum(C, setNumber); //get earliest available line number
-            assert(newLineNum != -1);
-            C = addLine(C, setNumber, newLineNum);
-            freeLine = (C->setList[setNumber])->topLine;
-            while (freeLine->nextLine != NULL) {
-                freeLine = freeLine->nextLine;
-            }
-            assert(freeLine->lineNum == newLineNum);
-        }
-        else {
-            C = removeLine(C, setNumber, ((C->setList[setNumber])->topLine)->lineNum);
-            freeLine = (C->setList[setNumber])->topLine;
-            while (freeLine->nextLine != NULL) {
-                freeLine = freeLine->nextLine;
-            }
-            C->evictionCount += 1;
-            if (freeLine->isDirty) {
-                C->dirtyEvictionCount += 1;
-            }
-        }
-        freeLine->valid = true;
-        freeLine->tag = (long unsigned)(address >> (C->S + C->B));
-        freeLine->isDirty = true;
-    }
-    return C;
-}
 
-/**
- * @brief Parses tracefile line by line and update cache fields accordingly.
- * 
- * General idea:
- *      1. read tracefile line by line
- *      2. implement instruction from each line in cache
- *      3. update cache parameters after inplementing each line
- * 
-*/
-bool updateCache(cache *C, char* tracefilePath) { 
-    FILE* tracefile = fopen(tracefilePath, "r"); 
-    if (tracefile == NULL) {
-        fprintf(stderr,"COULD NOT OPEN TRACEFILE! <updateCache fn>"); 
-        fclose(tracefile);
-        return false;
-    }
-    //From 18-213 Recitation 5 slides.
-    char access_type;
-    unsigned long address;
-    int size;
-    while (fscanf(tracefile, " %c %lx, %d", &access_type, &address, &size) > 0) {
-        if (access_type == 'L') { //L =>READ
-            C = loadUpdate(C, address, size);
-        }
-        else if (access_type == 'S') { //S => WRITE
-            C =  storeUpdate(C, address, size);
-        }
-        else {
-            fprintf(stderr,"INVALID ACCESS TYPE IN TRACE FILE.");
-            break;
-        }
-    } 
-    fclose(tracefile);
-    return true; 
-}
 
 /**
  * @brief Frees all memory allocated to the cache,
@@ -356,39 +276,29 @@ bool updateCache(cache *C, char* tracefilePath) {
  *        such as the lines added.
  * 
 */
-void freeCache(cache *C) {
-    struct set **sets = C->setList;
-    int S = (1 << C->S);
-    for (int i = 0; i < S; i++) {
-        struct set *currSet = sets[i];
-        struct line *prev = currSet->topLine;
-        struct line *curr = currSet->topLine;
-        while(prev != NULL) {
-            curr = prev->nextLine;
-            free(prev);
-            prev = curr;
-        }
-        free(currSet);
+void freeCache(cache_t *cache) {
+    if (cache == NULL) {
+        return;
     }
-    free(sets);
-    free(C);
+    // Free each set and its constituent structures
+    for (unsigned long i = 0; i < (1UL << cache->S); i++) {
+        set_t *set = &cache->setList[i];
+        // Free the array of lines in each set
+        free(set->lines);
+
+        // Free the LRU counter array if it exists
+        if (set->lruCounter != NULL) {
+            free(set->lruCounter);
+        }
+    }
+
+    // Free the array of sets
+    free(cache->setList);
+
+    // Finally, free the cache itself
+    free(cache);
 }
 
-/**
- * @brief Prints information about what parameters the program requires and it's format.
- * 
-*/
-void displayUsage() {
-    fprintf(stderr,"\nUSAGE GUIDE"); 
-    fprintf(stderr, "\n");
-    fprintf(stderr, "\nUsage:\t\t ./csim [-hv] -s <s> -E <E> -b <b> -t <tracefile>");
-    fprintf(stderr, "\n-h:\t Optional help flag that prints usage info");
-    fprintf(stderr, "\n-v:\t Optional verbose flag that displays trace info");
-    fprintf(stderr, "\n-s <s>:\t Number of set index bits (S = 2^s is the number of sets)");
-    fprintf(stderr, "\n-E <E>:\t Associativity (number of lines per set)");
-    fprintf(stderr, "\n-b <b>:\t Number of block bits (B = 2^b is the block size)");
-    fprintf(stderr, "\n-t <tracefile>:\t Name of the memory trace to replay");
-}
 
 /**
  * @brief Makes a "summary" of stats based on the fields of the cache. 
@@ -396,79 +306,38 @@ void displayUsage() {
  *        csim_stats_t struct that the printSummary fn requires.
  * 
 */
-const csim_stats_t *makeSummary(cache* C) {
+const csim_stats_t *makeSummary(cache_t *C) {
+    if (C == NULL) {
+        return NULL; // Handle null cache pointer
+    }
+
     csim_stats_t *stats = malloc(sizeof(csim_stats_t));
+    if (stats == NULL) {
+        return NULL; // Handle failed memory allocation
+    }
+
     stats->hits = C->hitCount;
     stats->misses = C->missCount;
     stats->evictions = C->evictionCount;
 
     unsigned long dirtyByteCount = 0;
-    //Loop through all lines, count all dirty lines
-    struct set **sets = C->setList;
-    unsigned int S = 1U << C->S;
-    for(unsigned int i = 0; i < S; i++) {
-        struct set *currSet = sets[i];
-        struct line *currLine = currSet->topLine;
-        while (currLine != NULL) {
-            if (currLine->isDirty) {
-                dirtyByteCount += 1;
+    // Loop through all sets and lines, count all dirty lines
+    for (unsigned int i = 0; i < (1UL << C->S); i++) {
+        set_t *currSet = &C->setList[i];
+        for (unsigned int j = 0; j < C->E; j++) {
+            if (currSet->lines[j].valid && currSet->lines[j].isDirty) {
+                dirtyByteCount++;
             }
-            currLine = currLine->nextLine;
         }
     }
-    stats->dirty_bytes = dirtyByteCount * (1 << C->B);
-    stats->dirty_evictions = C->dirtyEvictionCount * (1 << C->B);
-    const csim_stats_t *result = stats;
-    return result;
+    
+    // Calculate dirty bytes: number of dirty lines multiplied by block size
+    stats->dirty_bytes = dirtyByteCount * (1UL << C->B);
+
+    // Calculate dirty evictions: number of dirty evictions multiplied by block size
+    stats->dirty_evictions = C->dirtyEvictionCount * (1UL << C->B);
+
+    return stats;
 }
 
 
-int main(int argn, char *args[]) {
-    int opt;
-    unsigned int s;
-    unsigned int e;
-    unsigned int b; 
-    char* tracefilePath;
-    if (argn < 2) {
-        fprintf(stderr, "Insufficient args.");
-        return 1; 
-    }
-    while ((opt = getopt(argn, args, "hvs:E:b:t:")) != -1) { 
-        switch (opt) {
-        case 's':
-            s = (unsigned int)atoi(optarg); 
-            break; 
-        case 'E':
-            e = (unsigned int)atoi(optarg); 
-            break;
-        case 'b':
-            b = (unsigned int)atoi(optarg); 
-            break;
-        case 't':
-            tracefilePath = malloc(200);
-            tracefilePath = strcpy(tracefilePath, optarg); 
-            break;
-        case 'v': 
-            break;
-        case 'h': 
-            displayUsage(); 
-            break;
-        default:
-            fprintf(stderr, "Invalid inputs.");
-            displayUsage();
-            break;
-        }
-    }
-    cache *myCache = newCache(s, e, b); 
-    if (myCache == NULL || tracefilePath == NULL) {
-        return 1;
-    }
-    bool didItUpdate = updateCache(myCache, tracefilePath);
-    if (!didItUpdate) return 1;
-    const csim_stats_t *stats = makeSummary(myCache);
-    printSummary(stats);
-    free((void*)stats);
-    free(tracefilePath);
-    freeCache(myCache); 
-    return 0; 
-}

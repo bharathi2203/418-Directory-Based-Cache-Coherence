@@ -1,32 +1,13 @@
 /**
- * @file cachelab.h
- * @brief Prototypes for Cache Lab helper functions
+ * @file single_cache.h
+ * @brief Implement basic LRU cache. 
  */
 
-#ifndef CACHELAB_TOOLS_H
-#define CACHELAB_TOOLS_H
+#ifndef CACHE_H
+#define CACHE_H
 
 #include <stdbool.h>
 #include <stdlib.h>
-
-/**
- * @brief Struct representing simulation statistics for a trace
- */
-typedef struct {
-    unsigned long hits;            /* number of hits */
-    unsigned long misses;          /* number of misses */
-    unsigned long evictions;       /* number of evictions */
-    unsigned long dirty_bytes;     /* number of dirty bytes in cache at end */
-    unsigned long dirty_evictions; /* number of evictions of dirty lines */
-} csim_stats_t;
-
-/** @brief Store a summary of the cache simulation statistics. */
-void printSummary(const csim_stats_t *stats);
-
-/* @brief Load the stored summary of the cache simulation statistics. */
-bool loadSummary(csim_stats_t *stats);
-
-/* Grading parameters for transpose */
 
 /** @brief Number of clock cycles for hit */
 #define HIT_CYCLES 4
@@ -34,68 +15,60 @@ bool loadSummary(csim_stats_t *stats);
 /** @brief Number of clock cycles for miss */
 #define MISS_CYCLES 100
 
-/** @brief Log number of sets */
-#define TEST_LOG_SET 5
-
-/** @brief Associativity */
-#define TEST_ASSOC 1
-
-/** @brief Log number of bytes / block */
-#define TEST_LOG_BLOCK 6
-
-/** @brief Number of sets for Haswell L1 Cache */
-#define HASWELL_L1_SET 6
-
-/** @brief Haswell L1 Associativity */
-#define HASWELL_L1_ASSOC 8
-
-/** @brief Haswell L1 number of bytes / block */
-#define HASWELL_L1_BLOCK 6
-
-/** @brief Maximum number of transpose functions that can be registered */
-#define MAX_TRANS_FUNCS 100
-
-/** @brief The description string for the transpose_submit() function that the
-           student submits for credit */
-#define SUBMIT_DESCRIPTION "Transpose submission"
-
-/** @brief Maximum value of M or N in transpose functions */
-#define MAXN 4096
 
 /**
- * @brief Number of temp's allocated in temp array.
- *
- * Designed to fill cache to capacity
+ * @brief The state that a given block can be in.
+ * 
  */
-#define TMPCOUNT 256
+typedef enum { INVALID, SHARED, EXCLUSIVE, MODIFIED } block_state;
 
 /**
- * @brief Struct representing the execution state of a transpose function
- */
-typedef struct trans_func {
-    void (*func_ptr)(size_t M, size_t N, double[N][M], double[M][N], double *);
-    const char *description;
-} trans_func_t;
+ * @brief Struct representing each line/block in a cache
+ * 
+ * Lines are implemented as linked lists.
+*/
+typedef struct line {
+    unsigned long lineNum;     // Index of the line 
+    unsigned long tag;          // Represents tag bits
+    bool valid;                 // Represents valid bit
+    bool isDirty;               // Represents dirty bit for each cache line
+    CacheLineState state;       // State of the cache line (MESI)
+} line_t;
 
-/* External variables defined in cachelab.c */
-extern trans_func_t func_list[MAX_TRANS_FUNCS];
-extern int func_counter;
+/**
+ * @brief Struct representing each set in a cache
+ * 
+*/
+typedef struct set {
+    line_t *lines;                // Array of lines in the set
+    unsigned long *lruCounter;    // Array to keep track of LRU order
+    unsigned long maxLines;       // Total number of lines in the set
+} set_t;
 
-/* External function defined in trans.c */
-extern void registerFunctions(void);
 
-/** @brief Fills a matrix with data */
-void initMatrix(size_t M, size_t N, double A[N][M], double B[M][N]);
+/**
+ * @brief Struct representing the cache
+ * 
+*/
 
-/** @brief Makes a copy of a matrix */
-void copyMatrix(size_t M, size_t N, double Adst[N][M], double Asrc[N][M]);
+typedef struct cache {
+    int processor_id;                         // Processor that this cache belongs to
 
-/** @brief The baseline trans function that produces correct results. */
-void correctTrans(size_t M, size_t N, double A[N][M], double B[M][N]);
+    unsigned long S;                          // Number of set bits
+    unsigned long E;                          // Associativity: number of lines per set
+    unsigned long B;                          // Number of block bits
+    struct set *setList;                      // Array of Sets
 
-/** @brief Adds a transpose function to the function list */
-void registerTransFunction(void (*trans)(size_t M, size_t N, double[N][M],
-                                         double[M][N], double *),
-                           const char *desc);
+    unsigned long hitCount;                   // number of hits
+    unsigned long missCount;                  // number of misses
+    unsigned long evictionCount;              // number of evictions
+    unsigned long dirtyEvictionCount;         // number of evictions of dirty lines
+} cache_t; 
 
-#endif /* CACHELAB_TOOLS_H */
+
+// Function declarations
+cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id);
+
+
+
+#endif /* CACHE_H */
