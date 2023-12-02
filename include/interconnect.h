@@ -9,18 +9,51 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-// Interconnect struct 
-typedef struct {
-   int temp;
-} Interconnect;
+typedef enum {
+    READ_REQUEST,       // Cache to Memory
+    READ_ACKNOWLEDGE,   // Memory to Cache
+    INVALIDATE,         // Memory to Cache
+    INVALIDATE_ACK,     // Cache to Memory
+    WRITE_REQUEST,      // Cache to Memory
+    WRITE_UPDATE,       // Cache to Memory or Cache to Cache (depending on policy)
+    WRITE_ACKNOWLEDGE,  // Memory to Cache
+    UPDATE              // Memory to Cache
+} message_type;
 
+typedef struct {
+    message_type type;  // The type of message being sent
+    int sourceId;       // ID of the sending cache or memory
+    int destId;         // ID of the destination cache or memory
+    int address;        // The memory address involved in the message
+} message_t;
+
+typedef struct {
+    int processorId;
+    cache_t cache;  // Assuming cache_t is another defined struct
+    // Additional processor-specific attributes, if necessary
+} processor_t;
+
+typedef struct {
+    message_t *queue;
+    int queueSize;
+    int front;
+    int rear;
+    // Additional attributes like bandwidth, latency, etc.
+} communication_interface_t;
 
 // Function declarations for interconnect 
-Interconnect* createInterconnect(int num_processors);
-int sendData(int source, int dest, void* data);
-int receiveData(int source, int dest, void* data);
-int broadcastMessage(int source, void* data);
-void processInterconnectQueue(void);
-void freeInterconnect(Interconnect* interconnect);
+// Initialize the interconnect
+interconnect_t *createInterconnect(int num_processors);
+
+// Send a message via the interconnect
+void interconnectSendMessage(interconnect_t *interconnect, message_t message);
+
+// Process messages from the interconnect queue
+void interconnectProcessMessages(interconnect_t *interconnect);
+
+// Free resources associated with the interconnect
+void interconnectFree(interconnect_t *interconnect);
+
+int broadcastMessage(int source, message_t message);
 
 #endif // INTERCONNECT_H

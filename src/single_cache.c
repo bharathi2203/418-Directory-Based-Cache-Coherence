@@ -58,6 +58,12 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
         }
     }
 
+    /*
+    Ensure that each cache and directory instance can communicate with 
+    the interconnect. This might involve passing a reference to the 
+    interconnect to each cache and directory upon their initialization.
+    */
+
     return new; 
 }
 
