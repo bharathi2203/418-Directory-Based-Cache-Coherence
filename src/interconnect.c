@@ -5,52 +5,82 @@
 #include <interconnect.h>
 
 
-// Function declarations for interconnect 
-Interconnect* createInterconnect(int num_processors);
 /*
 createInterconnect:
    - Purpose: Initializes the interconnect system with specified parameters.
    - Parameters: Number of cores, interconnect topology, bandwidth, latency characteristics, etc.
    - Returns: A pointer to the initialized interconnect structure.
 */
+interconnect_t *createInterconnect() {
+   interconnect_t *interconnect = (interconnect_t *)malloc(sizeof(interconnect_t));
+   if (interconnect == NULL) {
+      return NULL;
+   }
 
-int sendData(int source, int dest, void* data);
-/*
-sendData:
-   - Purpose: Handles sending data from one cache/core to another.
-   - Parameters: Source and destination identifiers, data to be sent.
-   - Returns: Status of the data transfer operation.
-*/
+   // Initialize the queue
+   interconnect->queue = createQueue();
+   if (!interconnect->queue) {
+       // Handle queue creation failure
+       free(interconnect);
+       return NULL;
+   }
 
-int receiveData(int source, int dest, void* data);
-/*
-receiveData:
-   - Purpose: Manages the reception of data at a cache/core.
-   - Parameters: Receiver identifier, buffer for received data.
-   - Returns: Amount of data received and status.
-*/
+   // Set up mutex and condition variable
+   pthread_mutex_init(&(interconnect->queue->lock), NULL);
+   pthread_cond_init(&(interconnect->queue->cond), NULL);
 
-int broadcastMessage(int source, void* data);
-/*
-broadcastMessage:
-   - Purpose: Sends a message to all cores/caches in the system.
-   - Parameters: Message to be broadcasted.
-   - Returns: Status of the broadcast operation.
-*/
-
-void processInterconnectQueue(void);
-/*
-processInterconnectQueue:
-   - Purpose: Processes queued messages or data transfers.
-   - Parameters: None, or time/frame reference for simulation.
-   - Returns: None. Updates internal state.
-*/
+   // Capacity, numMessages, head, and tail are now managed by the Queue struct
+   return interconnect;
+}
 
 
-void freeInterconnect(Interconnect* interconnect);
-/*
-freeInterconnect:
-   - Purpose: Frees resources associated with the interconnect.
-   - Parameters: Pointer to the interconnect.
-   - Returns: None.
-*/
+/**
+ * @brief 
+ * 
+ * @param q 
+ * @param message 
+ */
+void interconnectSendMessage(Queue* q, message_t* message) {
+   enqueue(q, (void*)message);
+}
+
+
+/**
+ * @brief 
+ * 
+ * @param arg 
+ * @return void* 
+ */
+void* interconnectProcessMessages(interconnect_t *interconnect) {
+    Queue* q = interconnect->queue;
+    while (true) {  // This condition could be a flag indicating if the simulation is running
+        message_t* message = (message_t*)dequeue(q);
+        if (message == NULL) {
+            // Handle the case where the queue is empty or the simulation is ending
+            continue;
+        }
+
+        // Process the message based on its type
+        // For example:
+        if (message->type == READ_REQUEST) {
+            // Call a function to handle the read request
+        } else if (message->type == INVALIDATE) {
+            // Call a function to handle the invalidate message
+        }
+        // ...
+
+        // free the message after processing
+        free(message);
+
+        // Add condition or wait mechanism to break loop and end the thread
+    }
+    return NULL;
+}
+
+
+void interconnectFree(interconnect_t *interconnect) {
+    if (interconnect) {
+        free(interconnect->queue);
+        free(interconnect);
+    }
+}

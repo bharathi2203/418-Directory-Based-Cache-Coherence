@@ -30,16 +30,12 @@ typedef struct {
 typedef struct {
     int processorId;
     cache_t cache;  // Assuming cache_t is another defined struct
-    // Additional processor-specific attributes, if necessary
 } processor_t;
 
 typedef struct {
-    message_t *queue;
-    int queueSize;
-    int front;
-    int rear;
+   message_t *queue;
     // Additional attributes like bandwidth, latency, etc.
-} communication_interface_t;
+} interconnect_t;
 
 // Function declarations for interconnect 
 // Initialize the interconnect
