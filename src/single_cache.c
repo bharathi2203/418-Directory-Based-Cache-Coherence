@@ -1,6 +1,6 @@
 /**
  * @file single_cache.c
- * @brief Cache Simulator
+ * @brief cache 
  * 
  * @author BHARATHI SRIDHAR <bsridha2@andrew.cmu.edu>
  */
@@ -13,15 +13,16 @@
 #include <assert.h>
 #include "single_cache.h"
 
+
 /**
  * @brief Create the cache with the parameters parsed. 
- * @param[in]       s       number of set bits in the address
- * @param[in]       e       number of lines in each set
- * @param[in]       b       number of block bits in the address
- * @param[in]  processor_id processor number to identify cache 
- * @param[out]      new     newly allocated Cache.
  * 
-*/
+ * @param s                 number of set bits in the address
+ * @param e                 number of lines in each set
+ * @param b                 number of block bits in the address
+ * @param processor_id      processor number to identify cache 
+ * @return cache_t*         newly allocated Cache
+ */
 cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id) {
     unsigned int S = 1U << s;
     if (e == 0) {
@@ -70,8 +71,8 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
 /**
  * @brief Simulates the execution of an instruction by a processor.
  * 
- * @param[in]   cache       Cache struct for a given processor
- * @param[in]   line        Line from tracefile
+ * @param cache         Cache struct for a given processor
+ * @param line          Line from tracefile
  */
 void executeInstruction(cache_t *cache, char *line) {
     char instruction;
@@ -93,9 +94,12 @@ void executeInstruction(cache_t *cache, char *line) {
     }
 }
 
+
 /**
  * @brief Update the counters to implement LRU 
  * 
+ * @param set 
+ * @param lineNum 
  */
 void updateLRUCounter(set_t *set, unsigned long lineNum) {
     // Increment all counters
@@ -106,12 +110,13 @@ void updateLRUCounter(set_t *set, unsigned long lineNum) {
     set->lruCounter[lineNum] = 0;
 }
 
+
 /**
  * @brief Handles read operations from the processor's cache.
  * 
- * @param[in]   cache       Cache struct for a given processor
- * @param[in]   address     Address of memory being read
- *
+ * @param cache             Cache struct for a given processor
+ * @param address           Address of memory being read
+ * @return int 
  */
 int readFromCache(cache_t *cache, unsigned long address) {
     unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
@@ -141,14 +146,12 @@ int readFromCache(cache_t *cache, unsigned long address) {
     }
 }
 
-
 /**
  * @brief Handles write operations to the processor's cache.
  * 
- * @param[in]   cache       Cache struct for a given processor
- * @param[in]   address     Address of memory being read
- *
- * @param[out]  status      Status of the write operation.
+ * @param cache             Cache struct for a given processor
+ * @param address           Address of memory being read
+ * @return int              Status of the write operation.
  */
 int writeToCache(cache_t *cache, unsigned long address) {
     unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
@@ -180,13 +183,13 @@ int writeToCache(cache_t *cache, unsigned long address) {
     }
 }
 
-
 /**
  * @brief Manages cache miss scenarios.
  * 
- * @param[in]   cache       Cache struct for a given processor
- * @param[in]   address     Address of memory being read
- * 
+ * @param cache             Cache struct for a given processor
+ * @param address           Address of memory being read
+ * @param isDirty 
+ * @return int 
  */
 int cacheMissHandler(cache_t *cache, unsigned long address, bool isDirty) {
     // Calculate set index and tag from the address
@@ -245,13 +248,12 @@ int cacheMissHandler(cache_t *cache, unsigned long address, bool isDirty) {
     return 0;
 }
 
-
-
 /**
  * @brief Function prints every set, every line in the Cache.
  *        Useful for debugging!
  * 
-*/
+ * @param C 
+ */
 void printCache(cache_t *C) {
     if (C == NULL) {
         printf("Cache is NULL\n");
@@ -274,14 +276,13 @@ void printCache(cache_t *C) {
 }
 
 
-
-
 /**
  * @brief Frees all memory allocated to the cache,
  *        including memory allocated after initialization
  *        such as the lines added.
  * 
-*/
+ * @param cache 
+ */
 void freeCache(cache_t *cache) {
     if (cache == NULL) {
         return;
@@ -311,6 +312,7 @@ void freeCache(cache_t *cache) {
  *        This function is essentially a helper function to create the 
  *        csim_stats_t struct that the printSummary fn requires.
  * 
+ * @param cache 
 */
 const csim_stats_t *makeSummary(cache_t *C) {
     if (C == NULL) {

@@ -53,6 +53,7 @@ typedef struct set {
 
 typedef struct cache {
     int processor_id;                         // Processor that this cache belongs to
+    interconnect_t* interconnect;             // Pointer to the interconnect
 
     unsigned long S;                          // Number of set bits
     unsigned long E;                          // Associativity: number of lines per set

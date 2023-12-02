@@ -27,14 +27,11 @@ typedef struct {
     int address;        // The memory address involved in the message
 } message_t;
 
-typedef struct {
-    int processorId;
-    cache_t cache;  // Assuming cache_t is another defined struct
-} processor_t;
-
-typedef struct {
-   message_t *queue;
-    // Additional attributes like bandwidth, latency, etc.
+typedef struct interconnect {
+    message_t* queue;
+    int capacity;
+    int count;
+    pthread_mutex_t mutex;  // Mutex for thread-safe access
 } interconnect_t;
 
 // Function declarations for interconnect 

@@ -1,7 +1,12 @@
 #include "queue.h"
 #include <stdlib.h>
 
-// Create a new queue
+
+/**
+ * @brief Create a Queue object
+ * 
+ * @return Queue* 
+ */
 Queue* createQueue() {
     Queue* q = (Queue*)malloc(sizeof(Queue));
     if (q) {
@@ -13,7 +18,12 @@ Queue* createQueue() {
     return q;
 }
 
-// Add an element to the queue
+/**
+ * @brief Add an element to the queue
+ * 
+ * @param q 
+ * @param data 
+ */
 void enqueue(Queue* q, void* data) {
     pthread_mutex_lock(&q->lock);
 
@@ -38,7 +48,12 @@ void enqueue(Queue* q, void* data) {
     pthread_mutex_unlock(&q->lock);
 }
 
-// Remove and return the front element from the queue
+/**
+ * @brief Remove and return the front element from the queue
+ * 
+ * @param q 
+ * @return void* 
+ */
 void* dequeue(Queue* q) {
     pthread_mutex_lock(&q->lock);
     while (q->size == 0) {
@@ -58,24 +73,46 @@ void* dequeue(Queue* q) {
     return data;
 }
 
-// Peek the front element of the queue without removing it
+/**
+ * @brief Peek the front element of the queue without removing it
+ * 
+ * @param q 
+ * @return void* 
+ */
 void* peekQueue(const Queue* q) {
     if (isQueueEmpty(q)) return NULL;
     return q->front->data;
 }
 
-// Get the size of the queue
+
+/**
+ * @brief Get the size of the queue
+ * 
+ * @param q 
+ * @return int 
+ */
 int queueSize(const Queue* q) {
     if (q == NULL) return 0;
     return q->size;
 }
 
-// Check if the queue is empty
+/**
+ * @brief Check if the queue is empty
+ * 
+ * @param q 
+ * @return true 
+ * @return false 
+ */
 bool isQueueEmpty(const Queue* q) {
     return (q == NULL || q->size == 0);
 }
 
-// Free the queue
+
+/**
+ * @brief Free the queue
+ * 
+ * @param q 
+ */
 void freeQueue(Queue* q) {
     pthread_mutex_lock(&q->lock);
     while (!isQueueEmpty(q)) {

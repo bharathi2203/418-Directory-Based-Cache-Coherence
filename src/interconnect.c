@@ -4,46 +4,54 @@
  */
 #include <interconnect.h>
 
-
-/*
-createInterconnect:
-   - Purpose: Initializes the interconnect system with specified parameters.
-   - Parameters: Number of cores, interconnect topology, bandwidth, latency characteristics, etc.
-   - Returns: A pointer to the initialized interconnect structure.
-*/
+/**
+ * @brief Create and Initializes the interconnect system with specified parameters.
+ * 
+ * @return interconnect_t* A pointer to the initialized interconnect structure.
+ */
 interconnect_t *createInterconnect() {
    interconnect_t *interconnect = (interconnect_t *)malloc(sizeof(interconnect_t));
    if (interconnect == NULL) {
       return NULL;
    }
 
-   // Initialize the queue
+   // Initialize the message queue
    interconnect->queue = createQueue();
    if (!interconnect->queue) {
-       // Handle queue creation failure
-       free(interconnect);
-       return NULL;
+      free(interconnect);
+      return NULL;
    }
 
-   // Set up mutex and condition variable
-   pthread_mutex_init(&(interconnect->queue->lock), NULL);
-   pthread_cond_init(&(interconnect->queue->cond), NULL);
+   // Initialize the mutex for thread-safe operations
+   pthread_mutex_init(&interconnect->mutex, NULL);
 
-   // Capacity, numMessages, head, and tail are now managed by the Queue struct
    return interconnect;
 }
-
 
 /**
  * @brief 
  * 
- * @param q 
+ * @param interconnect 
  * @param message 
  */
-void interconnectSendMessage(Queue* q, message_t* message) {
-   enqueue(q, (void*)message);
-}
+void interconnectSendMessage(interconnect_t *interconnect, message_t message) {
+   if (interconnect == NULL || interconnect->queue == NULL) return;
 
+   pthread_mutex_lock(&interconnect->mutex);
+
+   // Copy the message into dynamically allocated memory
+   message_t *messageCopy = (message_t *)malloc(sizeof(message_t));
+   if (!messageCopy) {
+      pthread_mutex_unlock(&interconnect->mutex);
+      return; // Memory allocation failure
+   }
+   *messageCopy = message;
+
+   // Enqueue the message copy
+   enqueue(interconnect->queue, messageCopy);
+
+   pthread_mutex_unlock(&interconnect->mutex);
+}
 
 /**
  * @brief 
@@ -51,36 +59,94 @@ void interconnectSendMessage(Queue* q, message_t* message) {
  * @param arg 
  * @return void* 
  */
-void* interconnectProcessMessages(interconnect_t *interconnect) {
-    Queue* q = interconnect->queue;
-    while (true) {  // This condition could be a flag indicating if the simulation is running
-        message_t* message = (message_t*)dequeue(q);
-        if (message == NULL) {
-            // Handle the case where the queue is empty or the simulation is ending
-            continue;
-        }
+void *interconnectProcessMessages(void *arg) {
+   interconnect_t *interconnect = (interconnect_t *)arg;
+   if (interconnect == NULL || interconnect->queue == NULL) return;
 
-        // Process the message based on its type
-        // For example:
-        if (message->type == READ_REQUEST) {
-            // Call a function to handle the read request
-        } else if (message->type == INVALIDATE) {
-            // Call a function to handle the invalidate message
-        }
-        // ...
+   while (true) { // Replace with a condition to stop the thread
+      pthread_mutex_lock(&interconnect->mutex);
 
-        // free the message after processing
-        free(message);
+      if (isQueueEmpty(interconnect->queue)) {
+         pthread_mutex_unlock(&interconnect->mutex);
+         continue; // Consider adding a wait condition here
+      }
 
-        // Add condition or wait mechanism to break loop and end the thread
-    }
-    return NULL;
+      message_t *message = (message_t *)dequeue(interconnect->queue);
+      pthread_mutex_unlock(&interconnect->mutex);
+
+      if (message) {
+            // Process the message
+            // e.g., if (message->type == READ_REQUEST) { ... }
+
+         free(message); // Free the dequeued message
+      }
+   }
+
+   return NULL;
+}
+
+/**
+ * @brief 
+ * 
+ * @param source 
+ * @param message 
+ * @param interconnect 
+ * @return int 
+ */
+int broadcastMessage(int source, message_t message, interconnect_t *interconnect) {
+   if (!interconnect) return -1;
+
+   for (int i = 0; i < NUM_PROCESSORS; ++i) {
+      if (i == source) continue; // Skip the source processor
+
+      message_t newMessage = message;
+      newMessage.sourceId = source;
+      newMessage.destId = i; // Set the destination processor
+
+      interconnectSendMessage(interconnect, newMessage);
+   }
+
+   return 0;
 }
 
 
-void interconnectFree(interconnect_t *interconnect) {
-    if (interconnect) {
-        free(interconnect->queue);
+// Function to connect cache to interconnect
+/**
+ * @brief 
+ * 
+ * @param cache 
+ * @param interconnect 
+ */
+void connectCacheToInterconnect(cache_t* cache, interconnect_t* interconnect) {
+    if (cache != NULL) {
+        cache->interconnect = interconnect;
+    }
+}
+
+// Function to connect interconnect to directory
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param directory 
+ */
+void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* directory) {
+    if (directory != NULL) {
+        directory->interconnect = interconnect;
+    }
+}
+
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ */
+void freeInterconnect(interconnect_t *interconnect) {
+    if (interconnect != NULL) {
+        if (interconnect->queue != NULL) {
+            freeQueue(interconnect->queue);
+        }
+        pthread_mutex_destroy(&interconnect->mutex);
         free(interconnect);
     }
 }
