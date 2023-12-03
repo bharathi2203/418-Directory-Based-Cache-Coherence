@@ -35,55 +35,46 @@ interconnect_t *createInterconnect() {
  * @param message 
  */
 void interconnectSendMessage(interconnect_t *interconnect, message_t message) {
-   if (interconnect == NULL || interconnect->queue == NULL) return;
+    // Check if the interconnect and its queue are valid
+    if (interconnect == NULL || interconnect->queue == NULL) {
+        fprintf(stderr, "Interconnect or queue not initialized.\n");
+        return;
+    }
 
-   pthread_mutex_lock(&interconnect->mutex);
+    // Lock the interconnect's mutex to ensure thread-safe access to the queue
+    pthread_mutex_lock(&interconnect->mutex);
 
-   // Copy the message into dynamically allocated memory
-   message_t *messageCopy = (message_t *)malloc(sizeof(message_t));
-   if (!messageCopy) {
-      pthread_mutex_unlock(&interconnect->mutex);
-      return; // Memory allocation failure
-   }
-   *messageCopy = message;
+    // Check if the queue is full before attempting to send the message
+    if (interconnect->count >= interconnect->capacity) {
+        fprintf(stderr, "Interconnect queue is full. Message dropped.\n");
+        pthread_mutex_unlock(&interconnect->mutex);
+        return;
+    }
 
-   // Enqueue the message copy
-   enqueue(interconnect->queue, messageCopy);
+    // Allocate space for the new message
+    message_t *newMessage = (message_t *)malloc(sizeof(message_t));
+    if (newMessage == NULL) {
+        fprintf(stderr, "Failed to allocate memory for new message.\n");
+        pthread_mutex_unlock(&interconnect->mutex);
+        return;
+    }
 
-   pthread_mutex_unlock(&interconnect->mutex);
+    // Copy the message data into the newly allocated space
+    *newMessage = message;
+
+    // Insert the message into the queue
+    // Assuming there's a function like queueInsert() to add an item to the queue
+    queueInsert(interconnect->queue, newMessage);
+    interconnect->count++;
+
+    // Unlock the interconnect's mutex after inserting the message
+    pthread_mutex_unlock(&interconnect->mutex);
+
+    // Optional: Signal a condition variable to wake up any threads waiting for messages on the interconnect
+    // pthread_cond_signal(&interconnect->condition);
 }
 
-/**
- * @brief 
- * 
- * @param arg 
- * @return void* 
- */
-void *interconnectProcessMessages(void *arg) {
-   interconnect_t *interconnect = (interconnect_t *)arg;
-   if (interconnect == NULL || interconnect->queue == NULL) return;
 
-   while (true) { // Replace with a condition to stop the thread
-      pthread_mutex_lock(&interconnect->mutex);
-
-      if (isQueueEmpty(interconnect->queue)) {
-         pthread_mutex_unlock(&interconnect->mutex);
-         continue; // Consider adding a wait condition here
-      }
-
-      message_t *message = (message_t *)dequeue(interconnect->queue);
-      pthread_mutex_unlock(&interconnect->mutex);
-
-      if (message) {
-            // Process the message
-            // e.g., if (message->type == READ_REQUEST) { ... }
-
-         free(message); // Free the dequeued message
-      }
-   }
-
-   return NULL;
-}
 
 /**
  * @brief 
@@ -118,9 +109,9 @@ int broadcastMessage(int source, message_t message, interconnect_t *interconnect
  * @param interconnect 
  */
 void connectCacheToInterconnect(cache_t* cache, interconnect_t* interconnect) {
-    if (cache != NULL) {
-        cache->interconnect = interconnect;
-    }
+   if (cache != NULL) {
+      cache->interconnect = interconnect;
+   }
 }
 
 // Function to connect interconnect to directory
@@ -131,9 +122,9 @@ void connectCacheToInterconnect(cache_t* cache, interconnect_t* interconnect) {
  * @param directory 
  */
 void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* directory) {
-    if (directory != NULL) {
-        directory->interconnect = interconnect;
-    }
+   if (directory != NULL) {
+      directory->interconnect = interconnect;
+   }
 }
 
 /**
@@ -142,11 +133,11 @@ void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* d
  * @param interconnect 
  */
 void freeInterconnect(interconnect_t *interconnect) {
-    if (interconnect != NULL) {
-        if (interconnect->queue != NULL) {
-            freeQueue(interconnect->queue);
-        }
-        pthread_mutex_destroy(&interconnect->mutex);
-        free(interconnect);
-    }
+   if (interconnect != NULL) {
+      if (interconnect->queue != NULL) {
+         freeQueue(interconnect->queue);
+      }
+      pthread_mutex_destroy(&interconnect->mutex);
+      free(interconnect);
+   }
 }

@@ -38,15 +38,5 @@ typedef struct interconnect {
 // Initialize the interconnect
 interconnect_t *createInterconnect(int num_processors);
 
-// Send a message via the interconnect
-void interconnectSendMessage(interconnect_t *interconnect, message_t message);
-
-// Process messages from the interconnect queue
-void interconnectProcessMessages(interconnect_t *interconnect);
-
-// Free resources associated with the interconnect
-void interconnectFree(interconnect_t *interconnect);
-
-int broadcastMessage(int source, message_t message);
 
 #endif // INTERCONNECT_H

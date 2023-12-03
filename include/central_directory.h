@@ -20,7 +20,6 @@ typedef enum {
 } directory_state;
 
 // Directory entry for each block in the main memory
-// Directory entry for each block in the main memory
 typedef struct {
     directory_state state;
     bool existsInCache[NUM_PROCESSORS]; // Presence bits for each cache

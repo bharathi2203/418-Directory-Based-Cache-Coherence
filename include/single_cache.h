@@ -20,7 +20,7 @@
  * @brief The state that a given block can be in.
  * 
  */
-typedef enum { INVALID, SHARED, EXCLUSIVE, MODIFIED } block_state;
+typedef enum {INVALID, SHARED, EXCLUSIVE, MODIFIED} block_state;
 
 /**
  * @brief Struct representing each line/block in a cache
