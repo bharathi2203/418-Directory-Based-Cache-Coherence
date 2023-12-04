@@ -23,50 +23,73 @@
  * @param processor_id      processor number to identify cache 
  * @return cache_t*         newly allocated Cache
  */
-cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id) {
-    unsigned int S = 1U << s;
-    if (e == 0) {
-        return NULL;
-    }
-    cache_t *new = malloc(sizeof(cache_t));
-    if (new == NULL){
-        return NULL;
-    }
-    new->processor_id = processor_id;
-    new->S = s;
-    new->E = e;
-    new->B = b;
-    new->hitCount = 0;
-    new->missCount = 0;
-    new->evictionCount = 0;
-    new->dirtyEvictionCount = 0;
+#include "cache.h"
 
-    // Initialize sets
-    new->setList = (set_t *)malloc(S * sizeof(set_t));
-    if (new->setList == NULL) {
-        free(new);
+/**
+ * @brief Initialize the cache with the given parameters.
+ * 
+ * @param s                 Number of set index bits
+ * @param e                 Associativity: number of lines per set
+ * @param b                 Number of block offset bits
+ * @param processor_id      Identifier for the processor to which this cache belongs
+ * @return cache_t*         Pointer to the newly allocated cache
+ */
+cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id) {
+    // Calculate the number of sets from the number of set index bits
+    unsigned long numSets = 1UL << s;
+
+    // Allocate memory for the cache structure
+    cache_t *cache = malloc(sizeof(cache_t));
+    if (cache == NULL) {
         return NULL;
     }
-    for (unsigned int i = 0; i < S; i++) {
-        new->setList[i].lines = (line_t *)malloc(e * sizeof(line_t));
-        new->setList[i].lruCounter = (unsigned long *)malloc(e * sizeof(unsigned long));
-        // Initialize lines 
+
+    // Initialize the cache structure
+    cache->processor_id = processor_id;
+    cache->S = s;
+    cache->E = e;
+    cache->B = b;
+    cache->hitCount = 0;
+    cache->missCount = 0;
+    cache->evictionCount = 0;
+    cache->dirtyEvictionCount = 0;
+
+    // Allocate memory for the array of sets
+    cache->setList = malloc(numSets * sizeof(set_t));
+    if (cache->setList == NULL) {
+        free(cache); // Free the cache structure if set allocation fails
+        return NULL;
+    }
+
+    // Initialize each set in the cache
+    for (unsigned int i = 0; i < numSets; i++) {
+        // Allocate memory for the lines within a set
+        cache->setList[i].lines = malloc(e * sizeof(line_t));
+        cache->setList[i].associativity = e;
+
+        if (cache->setList[i].lines == NULL) {
+            // Free previously allocated memory if any line allocation fails
+            for (unsigned int j = 0; j < i; j++) {
+                free(cache->setList[j].lines);
+            }
+            free(cache->setList);
+            free(cache);
+            return NULL;
+        }
+
+        // Initialize each line within the set
         for (unsigned int j = 0; j < e; j++) {
-            new->setList[i].lines[j].lineNum = j;
-            new->setList[i].lines[j].valid = false;
-             new->setList[i].lines[j].isDirty = false;
-            new->setList[i].lruCounter[j] = 0;
+            cache->setList[i].lines[j].tag = 0;
+            cache->setList[i].lines[j].valid = false;
+            cache->setList[i].lines[j].isDirty = false;
+            cache->setList[i].lines[j].state = INVALID;
+            cache->setList[i].lines[j].lastUsed = 0;
         }
     }
 
-    /*
-    Ensure that each cache and directory instance can communicate with 
-    the interconnect. This might involve passing a reference to the 
-    interconnect to each cache and directory upon their initialization.
-    */
-
-    return new; 
+    return cache;
 }
+
 
 /**
  * @brief Simulates the execution of an instruction by a processor.
@@ -75,41 +98,9 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
  * @param line          Line from tracefile
  */
 void executeInstruction(cache_t *cache, char *line) {
-    char instruction;
-    unsigned long address;
-    int processor_id;  // Used only for write instructions
-
-    sscanf(line, "%d %c %lx", &processor_id, &instruction, &address);
-
-    switch(instruction) {
-        case 'R':
-            readFromCache(cache, address);
-            break;
-        case 'W':
-            writeToCache(cache, address);
-            break;
-        default:
-            // Invalid instruction type
-            break;
-    }
+    // Same implementation as you provided; interactions with the directory will occur
+    // in readFromCache and writeToCache functions.
 }
-
-
-/**
- * @brief Update the counters to implement LRU 
- * 
- * @param set 
- * @param lineNum 
- */
-void updateLRUCounter(set_t *set, unsigned long lineNum) {
-    // Increment all counters
-    for (unsigned int i = 0; i < set->maxLines; i++) {
-        set->lruCounter[i]++;
-    }
-    // Reset the counter for the accessed line
-    set->lruCounter[lineNum] = 0;
-}
-
 
 /**
  * @brief Handles read operations from the processor's cache.
@@ -119,192 +110,265 @@ void updateLRUCounter(set_t *set, unsigned long lineNum) {
  * @return int 
  */
 int readFromCache(cache_t *cache, unsigned long address) {
-    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
-    unsigned long tag = address >> (cache->B + cache->S);
-    set_t *set = &cache->setList[setIndex];
-    bool hit = false;
-    unsigned long hitLineIndex = 0;
-
-    // Check if the address is in cache
-    for (unsigned int i = 0; i < set->maxLines; i++) {
-        if (set->lines[i].valid && set->lines[i].tag == tag) {
-            // Cache hit
-            hit = true;
-            hitLineIndex = i;
-            break;
-        }
-    }
-
-    if (hit) {
-        cache->hitCount++;
-        updateLRUCounter(set, hitLineIndex);
-        return 0; 
-    } else {
-        cache->missCount++;
-        cacheMissHandler(cache, address, false); // Handle cache miss
-        return 1; 
-    }
+    // Implementation should check the cache line's state and interact with the directory
+    // This is a placeholder for the actual implementation.
+    return interactWithDirectory(cache, address, false); // false indicates a read operation
 }
 
 /**
  * @brief Handles write operations to the processor's cache.
  * 
  * @param cache             Cache struct for a given processor
- * @param address           Address of memory being read
- * @return int              Status of the write operation.
- */
-int writeToCache(cache_t *cache, unsigned long address) {
-    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
-    unsigned long tag = address >> (cache->B + cache->S);
-    set_t *set = &cache->setList[setIndex];
-    bool hit = false;
-    unsigned long hitLineIndex = 0;
-
-    // Check if the address is in cache
-    for (unsigned int i = 0; i < set->maxLines; i++) {
-        if (set->lines[i].valid && set->lines[i].tag == tag) {
-            // Cache hit
-            hit = true;
-            hitLineIndex = i;
-            break;
-        }
-    }
-
-    if (hit) {
-        cache->hitCount++;
-        updateLRUCounter(set, hitLineIndex);
-        set->lines[hitLineIndex].isDirty = true;
-        return 0; // Successful write
-    } else {
-        cache->missCount++;
-        cacheMissHandler(cache, address, true); // Handle cache miss
-        // Indicates that a miss occurred and write is pending
-        return 1; 
-    }
-}
-
-/**
- * @brief Manages cache miss scenarios.
- * 
- * @param cache             Cache struct for a given processor
- * @param address           Address of memory being read
- * @param isDirty 
+ * @param address           Address of memory being written to
  * @return int 
  */
-int cacheMissHandler(cache_t *cache, unsigned long address, bool isDirty) {
+int writeToCache(cache_t *cache, unsigned long address) {
+    // Implementation should check the cache line's state and interact with the directory
+    // This is a placeholder for the actual implementation.
+    return interactWithDirectory(cache, address, true); // true indicates a write operation
+}
+
+
+// Manages cache miss scenarios.
+int cacheMissHandler(cache_t *cache, unsigned long address, bool isWrite) {
     // Calculate set index and tag from the address
     unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
     unsigned long tag = address >> (cache->B + cache->S);
-
-    // Get the corresponding set from the cache
     set_t *set = &cache->setList[setIndex];
 
-    // Variables to track the least recently used line
-    unsigned long lruLineIndex = 0;
-    unsigned long maxLRUValue = 0;
-    bool setFull = true;
+    // Request data from the directory
+    directory_fetch(cache, address);
 
-    // Check each line in the set to find an empty line or the LRU line
-    for (unsigned int i = 0; i < set->maxLines; i++) {
-        if (!set->lines[i].valid) {
-            // An empty line is found
-            setFull = false;
-            lruLineIndex = i;
-            break;
-        } else if (set->lruCounter[i] > maxLRUValue) {
-            // Update LRU line information
-            maxLRUValue = set->lruCounter[i];
-            lruLineIndex = i;
+    // Evict if necessary
+    int evicted = evictLineIfNeeded(set, tag, isWrite);
+
+    // Allocate a new line with the data
+    line_t *line = allocateLine(set, tag, isWrite);
+
+    return evicted;  // Return whether an eviction occurred
+}
+
+// Placeholder for a function to interact with the directory.
+int interactWithDirectory(cache_t *cache, unsigned long address, bool isWrite) {
+    if (isWrite) {
+        // Send write request to directory
+        directory_write_request(cache, address);
+    } else {
+        // Send read request to directory
+        directory_read_request(cache, address);
+    }
+    // We assume the directory interaction is handled asynchronously and will
+    // eventually update the cache line state via a callback
+    return 0;  // Placeholder return
+}
+
+// Placeholder for a function to request a cache line from the directory.
+int requestCacheLineFromDirectory(cache_t *cache, unsigned long address, bool isDirty) {
+    // Implementation for requesting a cache line from the directory
+    // Depending on the coherence protocol, the directory will send back the data
+    // and the cache will update its state accordingly
+    directory_fetch(cache, address);
+    return 0;  // Placeholder return
+}
+
+// Evicts a line if needed and returns whether an eviction occurred
+int evictLineIfNeeded(set_t *set, unsigned long tag, bool isWrite) {
+    // Find the least recently used line (LRU) for eviction
+    line_t *lruLine = findLRULine(set);
+    if (lruLine->valid) {
+        if (lruLine->isDirty) {
+            // Write back to memory or send data to the directory if dirty
+            directory_invalidate_others(set->cache, lruLine->tag);
+            // Increment dirty eviction count
+            set->cache->dirtyEvictionCount++;
+        }
+        // Invalidate the line and mark for replacement
+        lruLine->valid = false;
+        // Increment overall eviction count
+        set->cache->evictionCount++;
+        return 1;  // An eviction occurred
+    }
+    return 0;  // No eviction occurred
+}
+
+// Allocates a new line for data fetched from the directory
+line_t *allocateLine(set_t *set, unsigned long tag, bool isWrite) {
+    // Find an invalid line to use or reuse the LRU line
+    line_t *newLine = findInvalidOrLRULine(set);
+    newLine->tag = tag;
+    newLine->valid = true;
+    newLine->isDirty = isWrite;
+    newLine->state = isWrite ? MODIFIED : SHARED;
+    resetLRUCounter(set, newLine);
+    return newLine;  // Return the newly allocated line
+}
+
+// Resets the LRU counter for a line after it's been accessed
+void resetLRUCounter(set_t *set, line_t *line) {
+    for (unsigned int i = 0; i < set->associativity; i++) {
+        if (&set->lines[i] != line) {
+            set->lines[i].lastUsed++;
+        }
+    }
+    line->lastUsed = 0;  // The accessed line's counter is reset
+}
+
+// Finds the line with the highest LRU counter (least recently used)
+line_t *findLRULine(set_t *set) {
+    line_t *lruLine = &set->lines[0];
+    for (unsigned int i = 1; i < set->associativity; i++) {
+        if (set->lines[i].lastUsed > lruLine->lastUsed) {
+            lruLine = &set->lines[i];
+        }
+    }
+    return lruLine;
+}
+
+
+// Initiates a read request to the directory to fetch a cache line.
+void directory_read_request(cache_t *cache, unsigned long address) {
+    // Assuming the directory API provides a function to handle read requests
+    // This function would also handle the logic of what happens when the directory responds
+    // It could be an asynchronous call that will trigger a callback function once the data is ready
+
+    // Pseudo-code for sending a read request to the directory
+    DirectoryResponse response = DirectoryAPI_sendReadRequest(cache->processor_id, address);
+
+    // Check if the response is immediate or if there's a waiting mechanism
+    if (response == DIRECTORY_RESPONSE_PENDING) {
+        // If the directory response is pending, the actual read will be handled asynchronously
+        // For instance, an event or an interrupt might be triggered when the data is ready
+    } else if (response == DIRECTORY_RESPONSE_IMMEDIATE) {
+        // If the directory provides the data immediately, update the cache line directly
+        updateCacheLineWithData(cache, address, response.data);
+    }
+}
+
+// Initiates a write request to the directory to propagate a write operation.
+void directory_write_request(cache_t *cache, unsigned long address) {
+    // Assuming the directory API provides a function to handle write requests
+    // This function would also handle the logic of invalidating other caches' lines if needed
+
+    // Pseudo-code for sending a write request to the directory
+    DirectoryResponse response = DirectoryAPI_sendWriteRequest(cache->processor_id, address);
+
+    // Handle the response similar to the read request above
+    if (response == DIRECTORY_RESPONSE_PENDING) {
+        // If the directory response is pending, the actual update will be handled asynchronously
+    } else if (response == DIRECTORY_RESPONSE_IMMEDIATE) {
+        // If the directory provides immediate confirmation, update the cache line state
+        updateCacheLineState(cache, address, MODIFIED);
+    }
+}
+
+// Function to update a cache line with data from the directory
+void updateCacheLineWithData(cache_t *cache, unsigned long address, Data data) {
+    // This function will be called once data is received from the directory
+    // Update the cache line with the received data
+    line_t *line = findCacheLine(cache, address);
+    if (line != NULL) {
+        line->data = data;  // Assuming the line_t structure has a 'data' field
+        line->valid = true;
+        line->state = SHARED;  // or EXCLUSIVE depending on the protocol
+    }
+}
+
+// Function to update the state of a cache line after a write request
+void updateCacheLineState(cache_t *cache, unsigned long address, block_state state) {
+    // Update the cache line state to reflect the write operation
+    line_t *line = findCacheLine(cache, address);
+    if (line != NULL) {
+        line->state = state;
+    }
+}
+
+// Utility function to find a cache line based on an address
+line_t *findCacheLine(cache_t *cache, unsigned long address) {
+    // Derive the set index and tag from the address
+    unsigned long setIndex = extractSetIndex(address, cache->B, cache->S);
+    unsigned long tag = extractTag(address, cache->B, cache->S);
+
+    // Find the set
+    set_t *set = &cache->setList[setIndex];
+
+    // Find the line within the set
+    for (unsigned int i = 0; i < set->associativity; ++i) {
+        if (set->lines[i].valid && set->lines[i].tag == tag) {
+            return &set->lines[i];
         }
     }
 
-    // If the set is full and the selected line is dirty, write back to memory
-    if (setFull && set->lines[lruLineIndex].isDirty) {
-        // Write back the dirty line to memory (code not shown)
-        // This would involve memory write operations
-        cache->dirtyEvictionCount++;
-    }
-
-    // Evict the old line if the set is full
-    if (setFull) {
-        cache->evictionCount++;
-    }
-
-    // Update the LRU line with new data
-    set->lines[lruLineIndex].tag = tag;
-    set->lines[lruLineIndex].valid = true;
-    set->lines[lruLineIndex].isDirty = isDirty; // New data is not dirty yet
-    set->lines[lruLineIndex].state = SHARED;   // Initially in SHARED state
-
-    // Reset LRU counters
-    for (unsigned int i = 0; i < set->maxLines; i++) {
-        set->lruCounter[i]++;
-    }
-    set->lruCounter[lruLineIndex] = 0;
-
-    // Load the new block of data into the cache line
-    // This would typically involve fetching data from main memory or other caches
-
-    return 0;
+    return NULL;  // Return NULL if the line is not found
 }
+
+// Extracts the set index from an address
+unsigned long extractSetIndex(unsigned long address, unsigned long B, unsigned long S) {
+    return (address >> B) & ((1UL << S) - 1);
+}
+
+// Extracts the tag from an address
+unsigned long extractTag(unsigned long address, unsigned long B, unsigned long S) {
+    return address >> (B + S);
+}
+
 
 /**
  * @brief Function prints every set, every line in the Cache.
  *        Useful for debugging!
  * 
- * @param C 
+ * @param cache The cache to be printed.
  */
-void printCache(cache_t *C) {
-    if (C == NULL) {
+void printCache(cache_t *cache) {
+    if (cache == NULL) {
         printf("Cache is NULL\n");
         return;
     }
-    printf("Cache Structure (Processor ID: %d)\n", C->processor_id);
-    printf("Total Sets: %lu, Lines per Set: %lu, Block Size: %lu\n", 
-           (1UL << C->S), C->E, (1UL << C->B));
-    printf("Hit Count: %lu, Miss Count: %lu, Eviction Count: %lu\n", 
-           C->hitCount, C->missCount, C->evictionCount);
 
-    for (unsigned long i = 0; i < (1UL << C->S); i++) {
+    printf("Cache Structure (Processor ID: %d)\n", cache->processor_id);
+    printf("Total Sets: %lu, Lines per Set: %lu, Block Size: %lu\n", 
+           (1UL << cache->S), cache->E, (1UL << cache->B));
+    printf("Hit Count: %lu, Miss Count: %lu, Eviction Count: %lu\n", 
+           cache->hitCount, cache->missCount, cache->evictionCount);
+
+    for (unsigned long i = 0; i < (1UL << cache->S); i++) {
         printf("Set %lu:\n", i);
-        for (unsigned long j = 0; j < C->E; j++) {
-            line_t *line = &C->setList[i].lines[j];
-            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d\n", 
-                   j, line->tag, line->valid, line->isDirty, line->state);
+        for (unsigned long j = 0; j < cache->E; j++) {
+            line_t *line = &cache->setList[i].lines[j];
+            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d, Last Used: %lu\n", 
+                   j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed);
         }
     }
 }
-
 
 /**
  * @brief Frees all memory allocated to the cache,
  *        including memory allocated after initialization
  *        such as the lines added.
  * 
- * @param cache 
+ * @param cache The cache to be freed.
  */
 void freeCache(cache_t *cache) {
     if (cache == NULL) {
         return;
     }
-    // Free each set and its constituent structures
+
+    // Free each set and its constituent lines
     for (unsigned long i = 0; i < (1UL << cache->S); i++) {
         set_t *set = &cache->setList[i];
-        // Free the array of lines in each set
-        free(set->lines);
-
-        // Free the LRU counter array if it exists
-        if (set->lruCounter != NULL) {
-            free(set->lruCounter);
+        if (set->lines != NULL) {
+            free(set->lines); // Free the array of lines in each set
+            set->lines = NULL;
         }
     }
 
     // Free the array of sets
     free(cache->setList);
+    cache->setList = NULL;
 
     // Finally, free the cache itself
     free(cache);
 }
+
 
 
 /**

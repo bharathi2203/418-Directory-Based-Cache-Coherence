@@ -28,11 +28,11 @@ typedef enum {INVALID, SHARED, EXCLUSIVE, MODIFIED} block_state;
  * Lines are implemented as linked lists.
 */
 typedef struct line {
-    unsigned long lineNum;     // Index of the line 
     unsigned long tag;          // Represents tag bits
     bool valid;                 // Represents valid bit
     bool isDirty;               // Represents dirty bit for each cache line
     CacheLineState state;       // State of the cache line (MESI)
+    unsigned long lastUsed;     // LRU counter for the line
 } line_t;
 
 /**
@@ -40,9 +40,8 @@ typedef struct line {
  * 
 */
 typedef struct set {
-    line_t *lines;                // Array of lines in the set
-    unsigned long *lruCounter;    // Array to keep track of LRU order
-    unsigned long maxLines;       // Total number of lines in the set
+    line_t *lines;                      // Array of lines in the set
+    unsigned long associativity;        // Total number of lines in the set
 } set_t;
 
 
@@ -53,8 +52,7 @@ typedef struct set {
 
 typedef struct cache {
     int processor_id;                         // Processor that this cache belongs to
-    interconnect_t* interconnect;             // Pointer to the interconnect
-
+    
     unsigned long S;                          // Number of set bits
     unsigned long E;                          // Associativity: number of lines per set
     unsigned long B;                          // Number of block bits

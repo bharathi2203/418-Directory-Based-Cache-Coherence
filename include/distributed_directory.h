@@ -1,10 +1,10 @@
 /**
- * @file central_directory.h
+ * @file distributed_directory.h
  * @brief Implement a central directory based cache coherence protocol. 
  */
 
-#ifndef CENTRAL_DIRECTORY_H
-#define CENTRAL_DIRECTORY_H
+#ifndef DISTRIBUTED_DIRECTORY_H
+#define DISTRIBUTED_DIRECTORY_H
 
 #include <stdbool.h>
 #include <pthread.h>
@@ -36,8 +36,11 @@ typedef struct {
 
 // Function declarations for directory
 directory_t* initializeDirectory();
-void updateDirectoryEntry();
-bool checkCacheConsistency();
+void updateDirectoryEntry(directory_t* directory, int address, int processorId, directory_state newState);
+void invalidateDirectoryEntry(directory_t* directory, int address);
+void addProcessorToEntry(directory_t* directory, int address, int processorId);
+void removeProcessorFromEntry(directory_t* directory, int address, int processorId);
+void broadcastInvalidate(directory_t* directory, int address);
 void freeDirectory(directory_t* directory);
 
 // Function declarations for directory based protocol
@@ -46,4 +49,4 @@ void initializeSystem(void);
 // Function declarations for benchmarking / testing 
 void displayUsage(void);
 
-#endif // CENTRAL_DIRECTORY_H
+#endif // DISTRIBUTED_DIRECTORY_H

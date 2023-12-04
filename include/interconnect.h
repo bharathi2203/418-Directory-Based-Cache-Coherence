@@ -6,37 +6,28 @@
 #ifndef INTERCONNECT_H
 #define INTERCONNECT_H
 
-#include <stdbool.h>
-#include <pthread.h>
-
 typedef enum {
-    READ_REQUEST,       // Cache to Memory
-    READ_ACKNOWLEDGE,   // Memory to Cache
-    INVALIDATE,         // Memory to Cache
-    INVALIDATE_ACK,     // Cache to Memory
-    WRITE_REQUEST,      // Cache to Memory
-    WRITE_UPDATE,       // Cache to Memory or Cache to Cache (depending on policy)
-    WRITE_ACKNOWLEDGE,  // Memory to Cache
-    UPDATE              // Memory to Cache
+    READ_REQUEST, READ_ACKNOWLEDGE, INVALIDATE, INVALIDATE_ACK,
+    WRITE_REQUEST, WRITE_UPDATE, WRITE_ACKNOWLEDGE, UPDATE
 } message_type;
 
 typedef struct {
-    message_type type;  // The type of message being sent
-    int sourceId;       // ID of the sending cache or memory
-    int destId;         // ID of the destination cache or memory
-    int address;        // The memory address involved in the message
+    message_type type;
+    int sourceId;
+    int destId;
+    int address;
 } message_t;
 
 typedef struct interconnect {
-    message_t* queue;
-    int capacity;
-    int count;
-    pthread_mutex_t mutex;  // Mutex for thread-safe access
+    Queue* queue;
 } interconnect_t;
 
-// Function declarations for interconnect 
-// Initialize the interconnect
-interconnect_t *createInterconnect(int num_processors);
-
+interconnect_t* createInterconnect();
+void interconnectSendMessage(interconnect_t* interconnect, message_t message);
+void broadcastMessage(int source, message_t message, interconnect_t* interconnect);
+void connectCacheToInterconnect(cache_t* cache, interconnect_t* interconnect);
+void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* directory);
+void freeInterconnect(interconnect_t* interconnect);
 
 #endif // INTERCONNECT_H
+
