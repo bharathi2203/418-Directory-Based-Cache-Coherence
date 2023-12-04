@@ -8,7 +8,7 @@
 
 typedef enum {
     READ_REQUEST, READ_ACKNOWLEDGE, INVALIDATE, INVALIDATE_ACK,
-    WRITE_REQUEST, WRITE_UPDATE, WRITE_ACKNOWLEDGE, UPDATE
+    WRITE_REQUEST, WRITE_UPDATE, WRITE_ACKNOWLEDGE, FETCH
 } message_type;
 
 typedef struct {
@@ -23,10 +23,15 @@ typedef struct interconnect {
 } interconnect_t;
 
 interconnect_t* createInterconnect();
-void interconnectSendMessage(interconnect_t* interconnect, message_t message);
-void broadcastMessage(int source, message_t message, interconnect_t* interconnect);
-void connectCacheToInterconnect(cache_t* cache, interconnect_t* interconnect);
-void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* directory);
+
+void sendReadRequest(interconnect_t* interconnect, int srcId, int destId, int address);
+void sendExclusiveReadRequest(interconnect_t* interconnect, int srcId, int destId, int address);
+void sendReadData(interconnect_t* interconnect, int srcId, int destId, int address);
+void sendWriteData(interconnect_t* interconnect, int srcId, int destId, int address);
+void sendInvalidateRequest(interconnect_t* interconnect, int srcId, int destId, int address);
+void sendInvalidateAck(interconnect_t* interconnect, int srcId, int destId, int address);
+void processMessageQueue(interconnect_t* interconnect);
+
 void freeInterconnect(interconnect_t* interconnect);
 
 #endif // INTERCONNECT_H

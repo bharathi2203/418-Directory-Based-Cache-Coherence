@@ -22,13 +22,8 @@ interconnect_t *createInterconnect() {
       return NULL;
    }
 
-   // Initialize the mutex for thread-safe operations
-   pthread_mutex_init(&interconnect->mutex, NULL);
-
    return interconnect;
 }
-
-
 
 // Function to connect cache to interconnect
 /**
@@ -56,6 +51,66 @@ void connectInterconnectToDirectory(interconnect_t* interconnect, directory_t* d
    }
 }
 
+
+// Helper function to create a message
+static message_t createMessage(message_type type, int srcId, int destId, int address) {
+    message_t msg;
+    msg.type = type;
+    msg.sourceId = srcId;
+    msg.destId = destId;
+    msg.address = address;
+    return msg;
+}
+
+void sendReadRequest(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(READ_REQUEST, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void sendExclusiveReadRequest(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(READ_ACKNOWLEDGE, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void sendReadData(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(WRITE_REQUEST, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void sendWriteData(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(WRITE_UPDATE, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void sendInvalidateRequest(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(INVALIDATE, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void sendInvalidateAck(interconnect_t* interconnect, int srcId, int destId, int address) {
+    message_t msg = createMessage(INVALIDATE_ACK, srcId, destId, address);
+    enqueue(interconnect->queue, msg);
+}
+
+void processMessageQueue(interconnect_t* interconnect) {
+    while (!isQueueEmpty(interconnect->queue)) {
+        message_t msg = dequeue(interconnect->queue);
+        // Here you would process the message. 
+        // For example, you could call a function in the cache or directory
+        // to handle the message based on its type.
+        switch (msg.type) {
+            case READ_REQUEST:
+                // Process read request
+                break;
+            case READ_ACKNOWLEDGE:
+                // Process read acknowledge
+                break;
+            // ... and so on for other message types
+        }
+    }
+}
+
+
 /**
  * @brief 
  * 
@@ -66,7 +121,6 @@ void freeInterconnect(interconnect_t *interconnect) {
       if (interconnect->queue != NULL) {
          freeQueue(interconnect->queue);
       }
-      pthread_mutex_destroy(&interconnect->mutex);
       free(interconnect);
    }
 }
