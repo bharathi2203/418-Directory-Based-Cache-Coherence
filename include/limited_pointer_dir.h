@@ -1,33 +1,35 @@
 /**
- * @file central_directory.h
+ * @file limited_pointer_dir.h
  * @brief Implement a central directory based cache coherence protocol. 
  */
 
-#ifndef CENTRAL_DIRECTORY_H
-#define CENTRAL_DIRECTORY_H
+#ifndef LIMITED_POINTER_DIR_H
+#define LIMITED_POINTER_DIR_H
 
 #include <stdbool.h>
 #include <pthread.h>
 #include <directory.h> 
 
-// Directory entry for each block in the main memory
+#define NUM_POINTERS 10
+
 // Directory entry for each block in the main memory
 typedef struct {
-    directory_state state;
-    bool existsInCache[NUM_PROCESSORS]; // Presence bits for each cache
+    directory_state state; // Q: Does each cache need to track the state too?  
+    int nodes[NUM_POINTERS]; // Which node has this line 
     int owner; // Owner of the line if in exclusive/modified state
     pthread_mutex_t lock; // Mutex for synchronizing access to this entry
-} directory_entry_t;
+    int numSharedBy; // number of nodes this line is shared by
+} lp_directory_entry_t;
 
 typedef struct {
-    directory_entry_t* lines;
+    lp_directory_entry_t* lines;
     int numLines;
     pthread_mutex_t lock; // Mutex for synchronizing access to the directory
     interconnect_t* interconnect;  // Pointer to the interconnect
-} directory_t;
+} lp_directory_t;
 
 // Function declarations for directory
-directory_t* initializeDirectory();
+lp_directory_t* initializeDirectory();
 void updateDirectoryEntry();
 bool checkCacheConsistency();
 void freeDirectory(directory_t* directory);
@@ -38,4 +40,4 @@ void initializeSystem(void);
 // Function declarations for benchmarking / testing 
 void displayUsage(void);
 
-#endif // CENTRAL_DIRECTORY_H
+#endif // LIMITED_POINTER_DIR_H

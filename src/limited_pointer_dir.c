@@ -1,24 +1,26 @@
 /**
- * @file central_directory.c
- * @brief Implement a central directory based cache coherence protocol. 
+ * @file limited_pointer_directory.c
+ * @brief Implement a limited pointer scheme based cache coherence protocol. 
  */
 
+#include <limited_pointer_dir.h> 
 /**
  * @brief Initialize the directory
  * 
  * @param numLines 
- * @return directory_t* 
+ * @return lp_directory_t* 
  */
-directory_t* initializeDirectory(int numLines) {
-    directory_t* dir = (directory_t*)malloc(sizeof(directory_t));
-    dir->lines = (directory_entry_t*)malloc(sizeof(directory_entry_t) * numLines);
+lp_directory_t* initializeDirectory(int numLines) {
+    lp_directory_t* dir = (lp_directory_t*)malloc(sizeof(lp_directory_t));
+    dir->lines = (lp_directory_entry_t*)malloc(sizeof(lp_directory_entry_t) * numLines);
     dir->numLines = numLines;
     pthread_mutex_init(&dir->lock, NULL);
     
     for (int i = 0; i < numLines; i++) {
+        dir->lines[i].numSharedBy = 0;
         dir->lines[i].state = DIR_UNCACHED;
-        for(int j = 0; j < NUM_PROCESSORS; j++){
-            dir->lines[i].existsInCache[j] = false;
+        for(int j = 0; j < NUM_POINTERS; j++){
+            dir->lines[i].nodes[j] = -1;
         }
         dir->lines[i].owner = -1;
         pthread_mutex_init(&dir->lines[i].lock, NULL);
@@ -32,7 +34,7 @@ directory_t* initializeDirectory(int numLines) {
  * @param address 
  * @return int 
  */
- // Are you assuming a NUMA machine? The central directory source has a single directory for all caches so we can just index into the directoyr using the address 
+ // Are you assuming a NUMA machine? The central directory source has a single directory for all caches so we can just index into the directory using the address 
  // if NUMA machines, the mmenry is split across processors (slide deck #12) so we should find the home node for this address and then search for the entry there. 
 int directoryIndex(int address) {
     return address % NUM_LINES; // IS THIS CORRECT
@@ -46,12 +48,15 @@ int directoryIndex(int address) {
  * @param processorId 
  * @param newState 
  */
-void updateDirectoryEntry(directory_t* directory, int address, int processorId, directory_state newState) {
+void updateDirectoryEntry(lp_directory_t* directory, int address, int processorId, directory_state newState) {
     int index = directoryIndex(address);
-    pthread_mutex_lock(&directory->lines[index].lock);
-    directory->lines[index].state = newState;
-    directory->lines[index].owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? processorId : -1;
-    pthread_mutex_unlock(&directory->lines[index].lock);
+    lp_directory_entry_t* entry = directory->lines[index];
+    pthread_mutex_lock(entry->lock);
+    entry->state = newState;
+    entry->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? processorId : -1;
+    entry->nodes[numSharedBy] = processorId;
+    entry->numSharedBy++;
+    pthread_mutex_unlock(entry->lock);
 }
 
 /**
@@ -60,17 +65,21 @@ void updateDirectoryEntry(directory_t* directory, int address, int processorId, 
  * @param directory 
  * @param address 
  */
-void invalidateDirectoryEntry(directory_t* directory, int address) {
+void invalidateDirectoryEntry(lp_directory_t* directory, int address) {
    int index = directoryIndex(address);
-   pthread_mutex_lock(&directory->lines[index].lock);
-   directory->lines[index].state = DIR_UNCACHED;
-   for(int j = 0; j < NUM_PROCESSORS; j++){
-      directory->lines[index].existsInCache[j] = false;
+   lp_directory_entry_t* entry = directory->lines[index];
+   pthread_mutex_lock(entry->lock);
+   entry->numSharedBy = 0;
+   entry->state = DIR_UNCACHED;
+
+   for(int j = 0; j < NUM_POINTERS; j++){
+      entry->nodes[j] = -1;
    }
-   directory->lines[index].owner = -1;
-   pthread_mutex_unlock(&directory->lines[index].lock);
+   entry->owner = -1;
+   pthread_mutex_unlock(entry->lock);
 }
 
+// TODO: error check, if overflow we need to kick old sharer out or http://15418.courses.cs.cmu.edu/spring2013/article/25? 
 /**
  * @brief Add a processor to the directory entry's existsInCache bits
  * 
@@ -78,11 +87,13 @@ void invalidateDirectoryEntry(directory_t* directory, int address) {
  * @param address 
  * @param processorId 
  */
-void addProcessorToEntry(directory_t* directory, int address, int processorId) {
+void addProcessorToEntry(lp_directory_t* directory, int address, int processorId) {
    int index = directoryIndex(address);
-   pthread_mutex_lock(&directory->lines[index].lock);
-   directory->lines[index].existsInCache[processorId] = true;
-   pthread_mutex_unlock(&directory->lines[index].lock);
+   lp_directory_entry_t* entry = directory->lines[index];
+   pthread_mutex_lock(entry->lock);
+   entry->nodes[numSharedBy] = processorId;
+   entry->numSharedBy++;
+   pthread_mutex_unlock(entry->lock);
 }
 
 /**
@@ -92,11 +103,17 @@ void addProcessorToEntry(directory_t* directory, int address, int processorId) {
  * @param address 
  * @param processorId 
  */
-void removeProcessorFromEntry(directory_t* directory, int address, int processorId) {
+void removeProcessorFromEntry(lp_directory_t* directory, int address, int processorId) {
    int index = directoryIndex(address);
-   pthread_mutex_lock(&directory->lines[index].lock);
-   directory->lines[index].existsInCache[processorId] = false;
-   pthread_mutex_unlock(&directory->lines[index].lock);
+   lp_directory_entry_t* entry = directory->lines[index];
+   pthread_mutex_lock(entry->lock);
+   for(int i = 0; i < entry->numSharedBy; i++) {
+    if(entry->nodes[i] == processorId) {
+        entry->nodes[i] = -1; 
+    }
+   }
+   // Do we have to update the state here or does updateDirectoryEntry handle that? 
+   pthread_mutex_unlock(entry->lock);
 }
 
 /**
@@ -105,23 +122,24 @@ void removeProcessorFromEntry(directory_t* directory, int address, int processor
  * @param directory 
  * @param address 
  */
-void broadcastInvalidate(directory_t* directory, int address) {
+void broadcastInvalidate(lp_directory_t* directory, int address) {
     int index = directoryIndex(address);
-    pthread_mutex_lock(&directory->lines[index].lock);
-    if(directory->lines[index].state != DIR_UNCACHED) {
+    lp_directory_entry_t* entry = directory->lines[index];
+    pthread_mutex_lock(entry->lock);
+    if(entry->state != DIR_UNCACHED) {
         // Send invalidate message to all processors except the owner
-        for(int j = 0; j < NUM_PROCESSORS; j++){
-            if(j != directory->lines[index].owner){
+        for(int j = 0; j < numSharedBy; j++){
+            if(entry->node[j] != entry->owner){
                 // sendMessage(INVALIDATE, address, j);
             }
         }
     }
-    pthread_mutex_unlock(&directory->lines[index].lock);
+    pthread_mutex_unlock(entry->lock);
 }
 
 
 // Check if the cache is in a consistent state with the directory
-bool checkCacheConsistency(directory_t* directory, int lineIndex, int processorId) {
+bool checkCacheConsistency(lp_directory_t* directory, int lineIndex, int processorId) {
    // Implement consistency checking logic here
    return true; // placeholder return
 }
@@ -132,7 +150,7 @@ bool checkCacheConsistency(directory_t* directory, int lineIndex, int processorI
  * 
  * @param dir 
  */
-void freeDirectory(directory_t* dir) {
+void freeDirectory(lp_directory_t* dir) {
    if(dir != NULL) {
       if(dir->lines != NULL) {
          for(int i = 0; i < dir->numLines; i++) {
@@ -151,10 +169,10 @@ void freeDirectory(directory_t* dir) {
  */
 void initializeSystem(void) {
     // Initialize the central directory
-    directory = initializeDirectory(NUM_LINES);
+    lp_directory_t* directory = initializeDirectory(NUM_LINES);
 
     // Initialize the interconnect
-    interconnect = createInterconnect();
+    interconnect_t* interconnect = createInterconnect();
 
     // Initialize and connect all caches to the interconnect
     for (int i = 0; i < NUM_PROCESSORS; ++i) {
