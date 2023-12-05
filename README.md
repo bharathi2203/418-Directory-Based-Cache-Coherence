@@ -33,8 +33,8 @@ Shared data among cores creates dependencies which require careful management to
 
 # RESOURCES
 We have found 2 computer system simulator platforms that we can extend to add new coherence protocols: SST (https://sst-simulator.org/) and gem5 (https://www.gem5.org/). We can also extend the cache simulator from 15-213/18-213.
-Sources:
-CMU 15-418: Fall 2023: Lecture 12 - https://www.cs.cmu.edu/~418/lectures/12_directorycoherence.pdf
+
+Sources: CMU 15-418: Fall 2023: Lecture 12 - https://www.cs.cmu.edu/~418/lectures/12_directorycoherence.pdf
 
 # GOALS AND DELIVERABLES
 
