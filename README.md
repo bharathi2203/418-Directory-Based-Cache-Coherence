@@ -37,9 +37,11 @@ Sources:
 CMU 15-418: Fall 2023: Lecture 12 - https://www.cs.cmu.edu/~418/lectures/12_directorycoherence.pdf
 
 # GOALS AND DELIVERABLES
+
 PLAN TO ACHIEVE: 
 - Multicore cache simulator with distributed directory, limited pointer, and sparse directory based cache coherence schemes. 
-- Compare performance of different schemes implemented against a wide range of trace files. 	
+- Compare performance of different schemes implemented against a wide range of trace files.
+  
 HOPE TO ACHIEVE: 
 - Multi-thread the sequential cache simulator implementations. 
 - Optimizing directory based coherence using intervention and request forwarding. 
