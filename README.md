@@ -33,14 +33,21 @@ Shared data among cores creates dependencies which require careful management to
 
 # RESOURCES
 We have found 2 computer system simulator platforms that we can extend to add new coherence protocols: SST (https://sst-simulator.org/) and gem5 (https://www.gem5.org/). We can also extend the cache simulator from 15-213/18-213.
-Sources:
-CMU 15-418: Spring 2019: Lecture 13 - https://www.cs.cmu.edu/afs/cs/academic/class/15418-s19/www/lectures/13_directory.pdf
+
+Sources: CMU 15-418: Fall 2023: Lecture 12 - https://www.cs.cmu.edu/~418/lectures/12_directorycoherence.pdf
 
 # GOALS AND DELIVERABLES
-PLAN TO ACHIEVE: Multicore cache simulator with directory, limited pointer, and sparse directory cache coherence schemes. Compare performance of different schemes implemented against a wide range of trace files. 	
-HOPE TO ACHIEVE: Optimizing directory based coherence using intervention and request forwarding. Hybrid protocol, industry standard cache coherence protocol.	
+
+PLAN TO ACHIEVE: 
+- Multicore cache simulator with distributed directory, limited pointer, and sparse directory based cache coherence schemes. 
+- Compare performance of different schemes implemented against a wide range of trace files.
+  
+HOPE TO ACHIEVE: 
+- Multi-thread the sequential cache simulator implementations. 
+- Optimizing directory based coherence using intervention and request forwarding. 
+
 # Demo Plan
-We will display comparative graphs and visualizations showing the performance of various protocols (including MSI, MESI, MOESI, directory-based, limited pointer, and sparse directory schemes) under different workload scenarios. These graphs will highlight performance achieved across the various metrics mentioned above such as cache hit/miss rates, evictions, and interconnect traffic. We will also create speedup graphs and efficiency data that compare the performance of our implementations against baseline models. 
+We will display comparative graphs and visualizations showing the performance of various protocols (directory-based, limited pointer, and sparse directory schemes) under different workload scenarios. These graphs will highlight performance achieved across the various metrics mentioned above such as cache hit/miss rates, evictions, and interconnect traffic. We will also create speedup graphs and efficiency data that compare the performance of our implementations against baseline models. 
 # PLATFORM CHOICE
 We will use GHC machines for local development and testing, and then use the PSC machines so we can run traces on many cores. Using the PSC machines will also allow us to test the robustness of our implementations and provide a greater distribution of data for analysis. 
 
