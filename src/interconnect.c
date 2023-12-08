@@ -3,30 +3,9 @@
  * @brief 
  */
 #include <interconnect.h>
+#include "processor.h"
 
-/**
- * @brief Create and Initializes the interconnect system with specified parameters.
- * 
- * @return interconnect_t* A pointer to the initialized interconnect structure.
- */
-interconnect_t *createInterconnect() {
-   interconnect_t *interconnect = (interconnect_t *)malloc(sizeof(interconnect_t));
-   if (interconnect == NULL) {
-      return NULL;
-   }
-
-   // Initialize the message queue
-   interconnect->queue = createQueue();
-   if (!interconnect->queue) {
-      free(interconnect);
-      return NULL;
-   }
-
-   // Initialize the mutex for thread-safe operations
-   pthread_mutex_init(&interconnect->mutex, NULL);
-
-   return interconnect;
-}
+interconnect_t interconnects[NUM_PROCESSORS];
 
 /**
  * @brief 
@@ -48,9 +27,11 @@ void interconnectSendMessage(interconnect_t *interconnect, message_t message) {
    *messageCopy = message;
 
    // Enqueue the message copy
-   enqueue(interconnect->queue, messageCopy);
+   // enqueue(interconnect->queue, messageCopy);
 
    pthread_mutex_unlock(&interconnect->mutex);
+
+   processMessage(processors[message->destId], message);
 }
 
 /**

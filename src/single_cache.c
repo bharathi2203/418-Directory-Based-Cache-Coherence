@@ -184,6 +184,12 @@ int writeToCache(cache_t *cache, unsigned long address) {
 }
 
 /**
+ * TODO: Should we split the memory addresses so that processor 0 owns addr 0 to x, processor 1 owns x+1 to 2x etc? 
+*/
+static int addrProcessor(int addr) {
+    return addr/NUM_LINES;
+}
+/**
  * @brief Manages cache miss scenarios.
  * 
  * @param cache             Cache struct for a given processor
@@ -228,6 +234,18 @@ int cacheMissHandler(cache_t *cache, unsigned long address, bool isDirty) {
     // Evict the old line if the set is full
     if (setFull) {
         cache->evictionCount++;
+    }
+    
+    // find processor that has the requested address in its main memory 
+    // construct message 
+    if(addrProcessor(address) != cache->processor_id) {
+        message_t* m = malloc(sizeof(message_t));
+        m->type = READ_REQUEST; // TODO: only for now 
+        m->sourceId = cache->processor_id;
+        m->destId = addrProcessor(address);
+        m->address = address;
+        interconnectSendMessage(interconnects[m->destId], message);
+        // increment interconnect activity counter 
     }
 
     // Update the LRU line with new data

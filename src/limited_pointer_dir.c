@@ -37,7 +37,7 @@ lp_directory_t* initializeDirectory(int numLines) {
  // Are you assuming a NUMA machine? The central directory source has a single directory for all caches so we can just index into the directory using the address 
  // if NUMA machines, the mmenry is split across processors (slide deck #12) so we should find the home node for this address and then search for the entry there. 
 int directoryIndex(int address) {
-    return address % NUM_LINES; // IS THIS CORRECT
+    return address / cache[0].block_size; // IS THIS CORRECT
 }
 
 /**

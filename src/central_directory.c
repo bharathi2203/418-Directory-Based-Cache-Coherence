@@ -150,20 +150,19 @@ void freeDirectory(directory_t* dir) {
  * 
  */
 void initializeSystem(void) {
-    // Initialize the central directory
-    directory = initializeDirectory(NUM_LINES);
-
-    // Initialize the interconnect
-    interconnect = createInterconnect();
 
     // Initialize and connect all caches to the interconnect
     for (int i = 0; i < NUM_PROCESSORS; ++i) {
+        // Initialize the central directory
+        directories[i] = initializeDirectory(NUM_LINES);
         caches[i] = initializeCache(S, E, B, i);  // Initialize cache for processor 'i'
-        connectCacheToInterconnect(caches[i], interconnect);
+        connectCacheToInterconnect(caches[i], interconnect[i]);
+        processors[i]->cache = caches[i];
+        processor[i]->directory = directories[i];
     }
 
     // Connect the interconnect to the central directory
-    connectInterconnectToDirectory(interconnect, directory);
+    // connectInterconnectToDirectory(interconnect, directory);
 
 }
 
