@@ -22,24 +22,33 @@ cache_t *allCaches[NUM_PROCESSORS];
  * @brief Initialize the directory
  * 
  * @param numLines 
+ * @param interconnect 
  * @return directory_t* 
  */
-directory_t* initializeDirectory(int numLines) {
+directory_t* initializeDirectory(int numLines, interconnect_t* interconnect) {
     directory_t* dir = (directory_t*)malloc(sizeof(directory_t));
-    dir->lines = (directory_entry_t*)malloc(sizeof(directory_entry_t) * numLines);
+    if (!dir) {
+        return NULL;
+    }
+
+    dir->lines = (directory_entry_t*)calloc(numLines, sizeof(directory_entry_t));
+    if (!dir->lines) {
+        free(dir);
+        return NULL;
+    }
+
     dir->numLines = numLines;
-    pthread_mutex_init(&dir->lock, NULL);
-    
+    dir->interconnect = interconnect; // Link the directory to the interconnect
+
+    // Initialize each line in the directory
     for (int i = 0; i < numLines; i++) {
         dir->lines[i].state = DIR_UNCACHED;
-        for(int j = 0; j < NUM_PROCESSORS; j++){
-            dir->lines[i].existsInCache[j] = false;
-        }
+        memset(dir->lines[i].existsInCache, false, sizeof(bool) * NUM_PROCESSORS);
         dir->lines[i].owner = -1;
-        pthread_mutex_init(&dir->lines[i].lock, NULL);
     }
     return dir;
 }
+
 
 /**
  * @brief Helper function to find the directory index for a given address
@@ -51,167 +60,297 @@ int directoryIndex(int address) {
    return address % NUM_LINES;
 }
 
-
+/**
+ * @brief 
+ * 
+ * @param dir 
+ */
 void freeDirectory(directory_t* dir) {
     if (dir) {
-        free(dir->lines);
+        if (dir->lines) {
+            free(dir->lines);
+        }
         free(dir);
     }
 }
-
-
 
 /**
  * @brief initializeSystem
  * 
  */
 void initializeSystem(void) {
-    // Initialize the central directory
-    directory = initializeDirectory(NUM_LINES);
-
-    // Initialize the interconnect
+    // Allocate and initialize interconnect with queues
     interconnect = createInterconnect();
+    interconnect->incomingQueue = createQueue();
+    interconnect->outgoingQueue = createQueue();
 
-    // Initialize and connect all caches to the interconnect
+    // Initialize NUMA nodes, each with its own cache and directory
     for (int i = 0; i < NUM_PROCESSORS; ++i) {
-        caches[i] = initializeCache(S, E, B, i);  // Initialize cache for processor 'i'
-        connectCacheToInterconnect(caches[i], interconnect);
+        interconnect->nodeList[i].directory = initializeDirectory(NUM_LINES, interconnect);
+        interconnect->nodeList[i].cache = initializeCache(s, e, b, i); // 's', 'e', and 'b' need to be defined based on the system's configuration
     }
-
-    // Connect the interconnect to the central directory
-    connectInterconnectToDirectory(interconnect, directory);
-
 }
+
 
 /**
  * @brief cleanup System
  * 
  */
 void cleanupSystem(void) {
-    // Cleanup caches
+    // Cleanup all NUMA nodes
     for (int i = 0; i < NUM_PROCESSORS; ++i) {
-        if (caches[i] != NULL) {
-            freeCache(caches[i]);
+        if (interconnect->nodeList[i].cache) {
+            freeCache(interconnect->nodeList[i].cache);
+        }
+        if (interconnect->nodeList[i].directory) {
+            freeDirectory(interconnect->nodeList[i].directory);
         }
     }
 
-    // Cleanup interconnect
-    if (interconnect != NULL) {
-        freeInterconnect(interconnect);
-    }
-
-    // Finally, free the central directory
-    if (directory != NULL) {
-        freeDirectory(directory);
+    // Cleanup interconnect queues
+    if (interconnect) {
+        if (interconnect->incomingQueue) {
+            freeQueue(interconnect->incomingQueue);
+        }
+        if (interconnect->outgoingQueue) {
+            freeQueue(interconnect->outgoingQueue);
+        }
+        free(interconnect);
     }
 }
 
+/**
+ * @brief 
+ * 
+ * @param directory 
+ * @param address 
+ * @param requestingProcessorId 
+ */
 void fetchFromDirectory(directory_t* directory, int address, int requestingProcessorId) {
     int index = directoryIndex(address);
+    directory_entry_t* line = &directory->lines[index];
 
-    // If the line is in another cache and possibly modified, fetch it from there
-    if (directory->lines[index].state == DIR_EXCLUSIVE_MODIFIED) {
-        int owningProcessorId = directory->lines[index].owner;
-        // Invalidate the data in the owning processor's cache
-        invalidateCacheLine(allCaches[owningProcessorId], address);
-        // Simulate fetching the data from the owning processor's cache to the requesting cache
-        transferCacheLine(allCaches[owningProcessorId], allCaches[requestingProcessorId], address);
-        // Update directory to reflect that the requesting processor now has the data
-        directory->lines[index].owner = requestingProcessorId;
-        directory->lines[index].state = DIR_SHARED;
-        for (int i = 0; i < NUM_PROCESSORS; i++) {
-            directory->lines[index].existsInCache[i] = false;
+    // Check the state of the directory line
+    if (line->state == DIR_EXCLUSIVE_MODIFIED) {
+        // If the line is exclusively modified, we need to fetch it from the owning cache
+        int owner = line->owner;
+        if (owner != -1) {
+            // Invalidate the line in the owner's cache
+            sendInvalidate(directory->interconnect, owner, address);
+
+            // Simulate transferring the line to the requesting cache
+            sendFetch(directory->interconnect, requestingProcessorId, address);
         }
-        directory->lines[index].existsInCache[requestingProcessorId] = true;
+    } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
+        // If the line is uncached or shared, fetch it from the memory
+        sendReadData(directory->interconnect, requestingProcessorId, address, (line->state == DIR_UNCACHED));
     }
-    // If the line is uncached or shared, fetch from memory and update directory
-    else if (directory->lines[index].state == DIR_UNCACHED || directory->lines[index].state == DIR_SHARED) {
-        // Fetch data from memory (not shown here)
-        // Update directory to reflect the new state
-        directory->lines[index].state = DIR_SHARED;
-        directory->lines[index].existsInCache[requestingProcessorId] = true;
+
+    // Update the directory entry
+    line->state = DIR_SHARED;
+    line->owner = -1;
+    for (int i = 0; i < NUM_PROCESSORS; i++) {
+        line->existsInCache[i] = false;
     }
+    line->existsInCache[requestingProcessorId] = true;
 }
 
+/**
+ * @brief 
+ * 
+ * @param cache 
+ * @param address 
+ */
 void readFromCache(cache_t *cache, int address) {
     int index = directoryIndex(address);
-    // Check if the address is present in the cache
-    if (cache->setList[index].lines[0].valid && cache->setList[index].lines[0].tag == address) {
-        // Cache hit: data is present in the cache
+    set_t *set = &cache->setList[index];
+    line_t *line = findLineInSet(set, address);
+
+    if (line != NULL && line->valid && line->tag == address) {
+        // Cache hit
         printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
+        cache->hitCount++;
     } else {
-        // Cache miss: attempt to fetch the data from the directory
+        // Cache miss
         printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
-        fetchFromDirectory(directory, address, cache->processor_id);
-        // Simulate loading the data into the cache line
-        cache->setList[index].lines[0].valid = true;
-        cache->setList[index].lines[0].tag = address;
-        cache->setList[index].lines[0].state = SHARED;
+        cache->missCount++;
+        fetchFromDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        addLineToCacheSet(set, address, SHARED);
     }
 }
 
+/**
+ * @brief 
+ * 
+ * @param cache 
+ * @param address 
+ */
 void writeToCache(cache_t *cache, int address) {
     int index = directoryIndex(address);
-    // Check if the address is present in the cache
-    if (cache->setList[index].lines[0].valid && cache->setList[index].lines[0].tag == address) {
-        // Cache hit: data is present in the cache
+    set_t *set = &cache->setList[index];
+    line_t *line = findLineInSet(set, address);
+
+    if (line != NULL && line->valid && line->tag == address) {
+        // Cache hit
         printf("Cache HIT: Processor %d writing to address %d\n", cache->processor_id, address);
+        cache->hitCount++;
+        line->state = MODIFIED;
+        line->isDirty = true;
     } else {
-        // Cache miss: attempt to fetch the data from the directory
+        // Cache miss
         printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
-        fetchFromDirectory(directory, address, cache->processor_id);
-        // Simulate loading the data into the cache line
-        cache->setList[index].lines[0].valid = true;
-        cache->setList[index].lines[0].tag = address;
-        cache->setList[index].lines[0].state = MODIFIED;
+        cache->missCount++;
+        fetchFromDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        addLineToCacheSet(set, address, MODIFIED);
     }
-    // Update the cache line to modified
-    cache->setList[index].lines[0].state = MODIFIED;
-    // Update the directory to reflect that this processor has modified the data
-    directory->lines[index].state = DIR_EXCLUSIVE_MODIFIED;
-    directory->lines[index].owner = cache->processor_id;
-    for (int i = 0; i < NUM_PROCESSORS; i++) {
-        directory->lines[index].existsInCache[i] = false;
-    }
-    directory->lines[index].existsInCache[cache->processor_id] = true;
+
+    // Notify the directory that this cache now has a modified version of the line
+    updateDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
 }
 
 
-// Parse a line from the trace file and perform the corresponding operation
-void processTraceLine(char *line) {
+/**
+ * @brief This function finds a line in the cache set
+ * 
+ * @param set 
+ * @param address 
+ * @return line_t* 
+ */
+line_t *findLineInSet(set_t *set, unsigned long address) {
+    for (int i = 0; i < set->associativity; i++) {
+        if (set->lines[i].tag == address && set->lines[i].valid) {
+            return &set->lines[i];
+        }
+    }
+    return NULL; // Line not found in cache set
+}
+
+
+/**
+ * @brief This function adds a line to the cache set
+ * 
+ * @param set 
+ * @param address 
+ * @param state 
+ */
+void addLineToCacheSet(set_t *set, unsigned long address, block_state state) {
+    // Here you would implement the logic to add a line to the cache set
+    // and possibly evict an old line based on the LRU policy
+}
+
+
+/**
+ * @brief This function updates the directory after a cache line write
+ * 
+ * @param directory 
+ * @param address 
+ * @param cache_id 
+ * @param newState 
+ */
+void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState) {
+    int index = directoryIndex(address);
+    directory_entry_t* line = &directory->lines[index];
+
+    // Update the directory entry based on the new state
+    line->state = newState;
+    line->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? cache_id : -1;
+
+    // Invalidate other caches if necessary
+    if (newState == DIR_EXCLUSIVE_MODIFIED) {
+        for (int i = 0; i < NUM_PROCESSORS; i++) {
+            if (i != cache_id) {
+                line->existsInCache[i] = false;
+                sendInvalidate(directory->interconnect, i, address);
+            }
+        }
+    }
+}
+
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param destId 
+ * @param address 
+ * @param exclusive 
+ */
+void sendReadData(interconnect_t* interconnect, int destId, unsigned long address, bool exclusive) {
+    // Create a READ_ACKNOWLEDGE message
+    message_t readDataMsg = {
+        .type = READ_ACKNOWLEDGE,
+        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .destId = destId,
+        .address = address
+    };
+
+    // Enqueue the message to the outgoing queue
+    enqueue(interconnect->outgoingQueue, readDataMsg);
+}
+
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param destId 
+ * @param address 
+ */
+void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long address) {
+    // Create an INVALIDATE message
+    message_t invalidateMsg = {
+        .type = INVALIDATE,
+        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .destId = destId,
+        .address = address
+    };
+
+    // Enqueue the message to the outgoing queue
+    enqueue(interconnect->outgoingQueue, invalidateMsg);
+}
+
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param destId 
+ * @param address 
+ */
+void sendFetch(interconnect_t* interconnect, int destId, unsigned long address) {
+    // Create a FETCH message
+    message_t fetchMsg = {
+        .type = FETCH,
+        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .destId = destId,
+        .address = address
+    };
+
+    // Enqueue the message to the outgoing queue
+    enqueue(interconnect->outgoingQueue, fetchMsg);
+}
+
+
+/**
+ * @brief Parse a line from the trace file and perform the corresponding operation
+ * 
+ * @param line 
+ * @param interconnect 
+ */
+void processTraceLine(char *line, interconnect_t* interconnect) {
     int processorId;
     char operation;
     int address;
 
     // Parse the line to extract the processor ID, operation, and address
-    if (sscanf(line, "%d %c %d", &processorId, &operation, &address) == 3) {
-        int index = directoryIndex(address);
+    if (sscanf(line, "%d %c %x", &processorId, &operation, &address) == 3) {
+        // Convert the address to the local node's index, assuming the address includes the node information
+        int localNodeIndex = addressToLocalNodeIndex(address);
         switch (operation) {
             case 'R':
-                // Perform read operation
-                if (!directory->lines[index].existsInCache[processorId]) {
-                    // If the line is not in the cache, it's a miss and needs to be loaded
-                    readFromCache(allCaches[processorId], address);
-                    directory->lines[index].existsInCache[processorId] = true;
-                    if (directory->lines[index].state == DIR_UNCACHED) {
-                        directory->lines[index].state = DIR_SHARED;
-                    }
-                }
-                // If it's already in the cache, it's a hit and nothing needs to be done
+                // Send a read request to the interconnect queue
+                enqueue(interconnect->incomingQueue, createMessage(READ_REQUEST, processorId, localNodeIndex, address));
                 break;
             case 'W':
-                // Perform write operation
-                writeFromCache(allCaches[processorId], address);
-                // Update the directory to reflect the write operation
-                directory->lines[index].state = DIR_EXCLUSIVE_MODIFIED;
-                directory->lines[index].owner = processorId;
-                // Invalidate other caches
-                for (int i = 0; i < NUM_PROCESSORS; i++) {
-                    if (i != processorId) {
-                        directory->lines[index].existsInCache[i] = false;
-                        // Optionally, send an invalidate message to the caches
-                    }
-                }
+                // Send a write request to the interconnect queue
+                enqueue(interconnect->incomingQueue, createMessage(WRITE_REQUEST, processorId, localNodeIndex, address));
                 break;
             default:
                 fprintf(stderr, "Unknown operation '%c' in trace file\n", operation);
@@ -221,6 +360,7 @@ void processTraceLine(char *line) {
         fprintf(stderr, "Invalid line format in trace file: %s\n", line);
     }
 }
+
 
 /**
  * @brief 
@@ -248,10 +388,8 @@ int main(int argc, char *argv[]) {
     // Process each line in the trace file
     char line[1024];
     while (fgets(line, sizeof(line), traceFile)) {
-        // Here you should parse the line and service the instruction
-        // For example:
-        // parseLine(line);
-        // serviceInstruction(parsedInstruction, interconnect);
+        // Here you we call parse the line and service the instruction
+        
     }
 
     // Cleanup and close the file

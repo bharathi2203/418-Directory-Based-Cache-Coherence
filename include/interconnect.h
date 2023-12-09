@@ -6,9 +6,13 @@
 #ifndef INTERCONNECT_H
 #define INTERCONNECT_H
 
+#include "single_cache.h"
+#include "distributed_directory.h"
+#include "queue.h"
+
 typedef enum {
     READ_REQUEST, READ_ACKNOWLEDGE, INVALIDATE, INVALIDATE_ACK,
-    WRITE_REQUEST, WRITE_UPDATE, WRITE_ACKNOWLEDGE, FETCH
+    WRITE_REQUEST, WRITE_ACKNOWLEDGE
 } message_type;
 
 typedef struct {
@@ -18,19 +22,19 @@ typedef struct {
     int address;
 } message_t;
 
+typedef struct node {
+    directory_t *directory;
+    cache_t *cache;
+} node_t;
+
 typedef struct interconnect {
-    Queue* queue;
+    Queue* incomingQueue;  // Queue for incoming messages
+    Queue* outgoingQueue;  // Queue for outgoing messages
+    node_t nodeList[NUM_PROCESSORS];
 } interconnect_t;
 
 interconnect_t* createInterconnect();
-
-void sendReadRequest(interconnect_t* interconnect, int srcId, int destId, int address);
-void sendExclusiveReadRequest(interconnect_t* interconnect, int srcId, int destId, int address);
-void sendReadData(interconnect_t* interconnect, int srcId, int destId, int address);
-void sendWriteData(interconnect_t* interconnect, int srcId, int destId, int address);
-void sendInvalidateRequest(interconnect_t* interconnect, int srcId, int destId, int address);
-void sendInvalidateAck(interconnect_t* interconnect, int srcId, int destId, int address);
-void processMessageQueue(interconnect_t* interconnect);
+// add other function declarations here
 
 void freeInterconnect(interconnect_t* interconnect);
 
