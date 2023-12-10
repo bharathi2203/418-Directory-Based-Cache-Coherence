@@ -66,7 +66,7 @@ unsigned long getCurrentTime() {
 }
 
 /**
- * @brief 
+ * @brief Free directory_t object. 
  * 
  * @param dir 
  */
@@ -125,11 +125,19 @@ void cleanupSystem(void) {
 }
 
 /**
- * @brief 
+ * @brief Fetches a cache line from the directory for a requesting processor. 
+ *
+ * This function handles fetching a cache line from the directory based on its 
+ * current state and updates its state accordingly. If the cache line is exclusively 
+ * modified, it fetches the line from the owning cache and invalidates it there. 
+ *
+ * For uncached or shared lines, it fetches the line directly from the main memory. 
+ * Finally, it updates the directory entry, setting the line to shared state 
+ * and recording its presence in the requesting processor's cache.
  * 
- * @param directory 
- * @param address 
- * @param requestingProcessorId 
+ * @param directory                 The directory from which the cache line is fetched.
+ * @param address                   The memory address of the cache line to fetch.
+ * @param requestingProcessorId     The ID of the processor requesting the cache line.
  */
 void fetchFromDirectory(directory_t* directory, int address, int requestingProcessorId) {
     int index = directoryIndex(address);
@@ -161,10 +169,21 @@ void fetchFromDirectory(directory_t* directory, int address, int requestingProce
 }
 
 /**
- * @brief 
+ * @brief Reads data from a specified address in the cache. 
+ *
+ * This function attempts to read data from the cache at a given address. 
+ * It first checks if the desired line is in the cache (cache hit). If 
+ * found and valid, it increments the hit counter and updates the line's 
+ * usage for the LRU policy. 
  * 
- * @param cache 
- * @param address 
+ * In case of a cache miss, it increments the miss counter and then 
+ * fetches the required line from the directory or another cache, 
+ * updating the local cache with the shared state of the line. This 
+ * function handles both hit and miss scenarios, ensuring proper cache 
+ * coherence and consistency.
+ * 
+ * @param cache         The cache from which data is to be read.
+ * @param address       The memory address to read from.
  */
 void readFromCache(cache_t *cache, int address) {
     int index = directoryIndex(address);
@@ -187,10 +206,21 @@ void readFromCache(cache_t *cache, int address) {
 
 
 /**
- * @brief 
+ * @brief Writes data to a specified address in the cache.
  * 
- * @param cache 
- * @param address 
+ * This function is responsible for writing data to the cache at a given address. 
+ * It checks if the target line is present and valid in the cache (cache hit). If 
+ * a hit occurs, it updates the line's state to MODIFIED, marks it as dirty, and 
+ * updates its usage for LRU policy. 
+ * 
+ * In the event of a cache miss, it increments the miss counter, fetches the line 
+ * from the directory or another cache, and adds it to the cache set with a 
+ * MODIFIED state. This function also notifies the directory of any changes, 
+ * ensuring the line is updated to the exclusive modified state in the directory, 
+ * maintaining cache coherence.
+ * 
+ * @param cache             The cache where data is to be written.
+ * @param address           The memory address to write to.
  */
 void writeToCache(cache_t *cache, int address) {
     int index = directoryIndex(address);
@@ -316,7 +346,12 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
 }
 
 /**
- * @brief 
+ * @brief Sends a read data acknowledgment message via the interconnect system. 
+ * 
+ * It creates a READ_ACKNOWLEDGE message specifying the source ID (often the directory's 
+ * ID), the destination cache ID, and the memory address of the data. The message is 
+ * then enqueued in the interconnect's outgoing queue, signaling that the requested data 
+ * is ready to be sent to the requesting cache node.
  * 
  * @param interconnect 
  * @param destId 
@@ -337,7 +372,11 @@ void sendReadData(interconnect_t* interconnect, int destId, unsigned long addres
 }
 
 /**
- * @brief 
+ * @brief Handles the invalidation of a specific cache line across the caches in the NUMA system. 
+ * 
+ * It creates an INVALIDATE message to notify a cache node that a particular memory address in its 
+ * cache needs to be invalidated. This function plays a pivotal role in maintaining cache coherence 
+ * by ensuring that outdated or incorrect data is not used by any of the caches.
  * 
  * @param interconnect 
  * @param destId 
@@ -357,7 +396,11 @@ void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long addr
 }
 
 /**
- * @brief 
+ * @brief Facilitates fetching data from a cache node in response to a cache miss in another node. 
+ * 
+ * On encountering a cache miss, this function is used to create and send a FETCH message 
+ * through the interconnect system to the cache node that currently holds the required data. 
+ * This ensures efficient data retrieval and consistency across the distributed cache system.
  * 
  * @param interconnect 
  * @param destId 

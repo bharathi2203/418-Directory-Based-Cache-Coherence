@@ -69,7 +69,7 @@ static message_t createMessage(message_type type, int srcId, int destId, int add
 }
 
 /**
- * @brief 
+ * @brief Process interconnect input and output queues 
  * 
  * @param interconnect 
  */
@@ -146,7 +146,8 @@ void processMessageQueue(interconnect_t* interconnect) {
 }
 
 /**
- * @brief 
+ * @brief  Manages read requests in a distributed cache system by updating the directory 
+ * state and ownership of cache lines based on the current status of the requested data.
  * 
  * @param interconnect 
  * @param msg 
@@ -174,7 +175,8 @@ void handleReadRequest(interconnect_t* interconnect, message_t msg) {
 }
 
 /**
- * @brief 
+ * @brief Handles write requests by updating directory entries to reflect the exclusive 
+ * modification status and sending invalidation requests to other caches as needed.
  * 
  * @param interconnect 
  * @param msg 
@@ -204,7 +206,8 @@ void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
 }
 
 /**
- * @brief 
+ * @brief Processes invalidate requests by invalidating the specified cache line 
+ * and sending an acknowledgment back to the requesting component.
  * 
  * @param interconnect 
  * @param msg 
@@ -226,7 +229,8 @@ void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
 }
 
 /**
- * @brief 
+ * @brief Updates a cache's state with data received in response to a read 
+ * request, marking the cache line as shared.
  * 
  * @param interconnect 
  * @param msg 
@@ -238,7 +242,8 @@ void handleReadAcknowledge(interconnect_t* interconnect, message_t msg) {
 }
 
 /**
- * @brief 
+ * @brief Updates the directory to indicate a cache line is invalidated 
+ * following the receipt of an invalidation acknowledgment.
  * 
  * @param interconnect 
  * @param msg 
@@ -250,7 +255,8 @@ void handleInvalidateAcknowledge(interconnect_t* interconnect, message_t msg) {
 }
 
 /**
- * @brief 
+ * @brief Updates the state of a cache line to modified in response 
+ * to a write acknowledgment, ensuring data consistency.
  * 
  * @param interconnect 
  * @param msg 
@@ -266,7 +272,8 @@ void handleWriteAcknowledge(interconnect_t* interconnect, message_t msg) {
 
 
 /**
- * @brief 
+ * @brief Safely deallocates memory and resources associated with the 
+ * interconnect structure, including queues and cache nodes.
  * 
  * @param interconnect 
  */
