@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <interconnect.h>
 
 /** @brief Number of clock cycles for hit */
 #define HIT_CYCLES 4
@@ -60,7 +61,7 @@ typedef struct line {
     unsigned long tag;          // Represents tag bits
     bool valid;                 // Represents valid bit
     bool isDirty;               // Represents dirty bit for each cache line
-    CacheLineState state;       // State of the cache line (MESI)
+    block_state state;       // State of the cache line (MESI)
     unsigned long lastUsed;     // LRU counter for the line
 } line_t;
 
