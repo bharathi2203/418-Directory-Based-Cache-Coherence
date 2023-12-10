@@ -21,7 +21,7 @@ csim_stats_t *system_stats = NULL;
  * @param interconnect 
  * @return directory_t* 
  */
-directory_t* initializeDirectory(int numLines, interconnect_t* interconnect) {
+directory_t* initializeDirectory(int numLines) {
     directory_t* dir = (directory_t*)malloc(sizeof(directory_t));
     if (!dir) {
         return NULL;
@@ -34,7 +34,6 @@ directory_t* initializeDirectory(int numLines, interconnect_t* interconnect) {
     }
 
     dir->numLines = numLines;
-    dir->interconnect = interconnect; // Link the directory to the interconnect
 
     // Initialize each line in the directory
     for (int i = 0; i < numLines; i++) {
@@ -344,6 +343,32 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
         }
     }
 }
+
+/**
+ * @brief Updates the state of a cache line in the directory.
+ * 
+ * @param directory The directory containing the cache line.
+ * @param address The address of the cache line to update.
+ * @param newState The new state to set for the cache line.
+ */
+void updateDirectoryState(directory_t* directory, unsigned long address, directory_state newState) {
+    if (!directory) return; // Safety check
+
+    int index = directoryIndex(address); // Get the index of the cache line in the directory
+    directory_entry_t* line = &directory->lines[index]; // Access the directory line
+
+    // Update the state of the directory line
+    line->state = newState;
+
+    // Reset owner and presence bits if the state is DIR_UNCACHED
+    if (newState == DIR_UNCACHED) {
+        line->owner = -1;
+        for (int i = 0; i < NUM_PROCESSORS; i++) {
+            line->existsInCache[i] = false;
+        }
+    }
+}
+
 
 /**
  * @brief Sends a read data acknowledgment message via the interconnect system. 

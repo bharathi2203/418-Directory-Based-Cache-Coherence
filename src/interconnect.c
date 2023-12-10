@@ -132,7 +132,6 @@ void processMessageQueue(interconnect_t* interconnect) {
                 break;
             case INVALIDATE_ACK:
                 // Update directory state
-                // Assume function updateDirectoryState exists
                 updateDirectoryState(dir, msg.address, DIR_UNCACHED);
                 break;
             case WRITE_ACKNOWLEDGE:

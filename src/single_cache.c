@@ -248,7 +248,7 @@ void invalidateCacheLine(cache_t *cache, unsigned long address) {
  * @param address 
  * @param data 
  */
-void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long address, data_t *data) {
+void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long address) {
     // First, determine the current state of the line in the directory
     int index = directoryIndex(address);
     directory_entry_t* directoryLine = &interconnect->nodeList[interconnect->processor_id].directory->lines[index];

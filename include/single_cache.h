@@ -166,7 +166,20 @@ typedef struct cache {
 
 // Function declarations
 cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id);
-// add other function declarations here
+unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
+unsigned long calculateTag(unsigned long address, unsigned long S, unsigned long B);
+line_t* findLineInSet(set_t set, unsigned long tag);
+int findCacheWithLine(unsigned long address);
+void processReadRequest(cache_t *cache, int sourceId, unsigned long address);
+void processWriteRequest(cache_t *cache, int sourceId, unsigned long address);
+void invalidateCacheLine(cache_t *cache, unsigned long address);
+void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long address);
+void notifyStateChangeToShared(interconnect_t *interconnect, int cacheId, unsigned long address);
+void sendWriteAcknowledge(interconnect_t *interconnect, int destId, unsigned long address);
+bool updateCacheLineState(cache_t *cache, unsigned long address, block_state newState);
+void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address);
+void printCache(cache_t *cache);
+void freeCache(cache_t *cache);
 
 
 #endif /* CACHE_H */
