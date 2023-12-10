@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -78,14 +79,37 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
     return cache;
 }
 
+/**
+ * @brief 
+ * 
+ * @param address 
+ * @param S 
+ * @param B 
+ * @return unsigned long 
+ */
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B) {
     return (address >> B) & ((1UL << S) - 1);
 }
 
+/**
+ * @brief 
+ * 
+ * @param address 
+ * @param S 
+ * @param B 
+ * @return unsigned long 
+ */
 unsigned long calculateTag(unsigned long address, unsigned long S, unsigned long B) {
     return address >> (S + B);
 }
 
+/**
+ * @brief 
+ * 
+ * @param set 
+ * @param tag 
+ * @return line_t* 
+ */
 line_t* findLineInSet(set_t set, unsigned long tag) {
     for (unsigned int i = 0; i < set.associativity; ++i) {
         if (set.lines[i].tag == tag && set.lines[i].valid) {
@@ -95,12 +119,35 @@ line_t* findLineInSet(set_t set, unsigned long tag) {
     return NULL;  // Line not found
 }
 
+/**
+ * @brief 
+ * 
+ * @param address 
+ * @return int 
+ */
 int findCacheWithLine(unsigned long address) {
-    // This would typically involve querying the directory or the interconnect.
-    // Return the ID of the cache that has the line, or -1 if not found.
-    // For now, this is just a placeholder.
+    int nodeId = address / NUM_PROCESSORS; // Hypothetical way to map address to node ID.
+    directory_entry_t* directoryLine = &directory->lines[nodeId];
+
+    // If the line is in EXCLUSIVE or MODIFIED state, that means only one cache has it.
+    if (directoryLine->state == DIR_EXCLUSIVE_MODIFIED) {
+        return directoryLine->owner;
+    }
+
+    // If the line is in SHARED state, we could return any cache that has it,
+    // or -1 to indicate it can be fetched from memory.
+    if (directoryLine->state == DIR_SHARED) {
+        for (int i = 0; i < NUM_PROCESSORS; i++) {
+            if (directoryLine->existsInCache[i]) {
+                return i; // Return the ID of the first cache found with the line.
+            }
+        }
+    }
+
+    // If the line is UNCACHED or no cache has the line, return -1.
     return -1;
 }
+
 
 
 
@@ -112,22 +159,18 @@ int findCacheWithLine(unsigned long address) {
  * @param address 
  */
 void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
-    // Calculate set index and tag from the address
     unsigned long setIndex = calculateSetIndex(address, cache->S, cache->B);
     unsigned long tag = calculateTag(address, cache->S, cache->B);
-    
-    // Search for the cache line in the set
     line_t *line = findLineInSet(cache->setList[setIndex], tag);
     
-    if (line != NULL && line->valid) {
-        // If cache line is found and valid
-        if (line->state == SHARED || line->state == EXCLUSIVE) {
-            // If line is in a shareable state
-            sendReadResponse(interconnect, sourceId, address, line->data); // Assuming line has data
-        }
+    if (line && line->valid) {
+        // Respond with data without changing the state
+        sendReadResponse(interconnect, sourceId, address, line->data); 
+        // Update line usage for LRU
+        updateLineUsage(cache->setList[setIndex], line); 
     } else {
-        // If cache miss
-        fetchDataFromDirectoryOrCache(cache, address); // Function to handle cache miss
+        // Cache miss, fetch from directory
+        fetchDataFromDirectoryOrCache(cache, address);
     }
 }
 
@@ -141,22 +184,20 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
 void processWriteRequest(cache_t *cache, int sourceId, unsigned long address) {
     unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
     unsigned long tag = address >> (cache->B + cache->S);
+    line_t *line = findLineInSet(cache->setList[setIndex], tag);
 
-    for (unsigned int i = 0; i < cache->E; ++i) {
-        line_t *line = &cache->setList[setIndex].lines[i];
-        if (line->tag == tag && line->valid) {
-            // Invalidate other caches if necessary
-            if (line->state == SHARED || line->state == EXCLUSIVE) {
-                // sendInvalidate(interconnect, /* other cache IDs */, address);
-            }
-            line->state = MODIFIED;
-            line->isDirty = true;
-            return;
-        }
+    if (line && line->valid) {
+        // Transition any state to MODIFIED
+        line->state = MODIFIED;
+        line->isDirty = true;
+        // Invalidate other caches
+        sendInvalidateToOthers(interconnect, sourceId, address);
+        // Update line usage for LRU
+        updateLineUsage(cache->setList[setIndex], line); 
+    } else {
+        // Cache miss, fetch from directory
+        fetchDataFromDirectoryOrCache(cache, address);
     }
-
-    // If line not found in cache or invalid, fetch it from directory/cache
-    fetchDataFromDirectoryOrCache(cache, address);
 }
 
 /**
@@ -176,7 +217,6 @@ void invalidateCacheLine(cache_t *cache, unsigned long address) {
             line->state = INVALID;
             // If line is dirty, handle dirty data (e.g., write back to memory)
             if (line->isDirty) {
-                // writeBackToMemory(address, line->data); // Assuming function exists
                 line->isDirty = false;
             }
             return;
@@ -364,7 +404,7 @@ void freeCache(cache_t *cache) {
  * 
  * @param cache 
 */
-const csim_stats_t *makeSummary(cache_t *cache) {
+csim_stats_t *makeSummary(cache_t *cache) {
     if (cache == NULL) {
         printf("Cache is NULL\n");
         return NULL;

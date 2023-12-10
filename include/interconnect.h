@@ -11,8 +11,12 @@
 #include "queue.h"
 
 typedef enum {
-    READ_REQUEST, READ_ACKNOWLEDGE, INVALIDATE, INVALIDATE_ACK,
-    WRITE_REQUEST, WRITE_ACKNOWLEDGE
+    READ_REQUEST,       // Cache to Memory
+    READ_ACKNOWLEDGE,   // Memory to Cache
+    INVALIDATE,         // Memory to Cache
+    INVALIDATE_ACK,     // Cache to Memory
+    WRITE_REQUEST,      // Cache to Memory
+    WRITE_ACKNOWLEDGE   // Memory to Cache
 } message_type;
 
 typedef struct {

@@ -145,7 +145,12 @@ void processMessageQueue(interconnect_t* interconnect) {
     }
 }
 
-
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleReadRequest(interconnect_t* interconnect, message_t msg) {
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
     int index = directoryIndex(msg.address);
@@ -168,7 +173,12 @@ void handleReadRequest(interconnect_t* interconnect, message_t msg) {
     }
 }
 
-
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
     // Locate the directory for the destination node
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
@@ -193,7 +203,12 @@ void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
     entry->existsInCache[msg.sourceId] = true;
 }
 
-
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
     // Invalidate the cache line in the specified cache
     cache_t* cache = interconnect->nodeList[msg.destId].cache;
@@ -210,19 +225,36 @@ void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
     enqueue(interconnect->outgoingQueue, invalidateAckMsg);
 }
 
-
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleReadAcknowledge(interconnect_t* interconnect, message_t msg) {
     // Update cache with the data received
     cache_t* cache = interconnect->nodeList[msg.destId].cache;
     updateCacheLineState(cache, msg.address, SHARED);
 }
 
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleInvalidateAcknowledge(interconnect_t* interconnect, message_t msg) {
     // Update directory to reflect the cache line is invalidated
     directory_t* dir = interconnect->nodeList[msg.sourceId].directory;
     updateDirectoryState(dir, msg.address, DIR_UNCACHED);
 }
 
+/**
+ * @brief 
+ * 
+ * @param interconnect 
+ * @param msg 
+ */
 void handleWriteAcknowledge(interconnect_t* interconnect, message_t msg) {
     // Update cache line state to MODIFIED
     cache_t* cache = interconnect->nodeList[msg.sourceId].cache;

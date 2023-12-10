@@ -3,9 +3,6 @@
  * @brief Implement a central directory based cache coherence protocol. 
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
 #include "single_cache.h"
 #include "distributed_directory.h"
 #include "interconnect.h"
@@ -14,9 +11,8 @@
  * @brief Global Structs
  * 
  */
-directory_t *directory = NULL;
 interconnect_t *interconnect = NULL;
-cache_t *allCaches[NUM_PROCESSORS];
+csim_stats_t *system_stats = NULL;
 
 /**
  * @brief Initialize the directory
@@ -58,6 +54,15 @@ directory_t* initializeDirectory(int numLines, interconnect_t* interconnect) {
  */
 int directoryIndex(int address) {
    return address % NUM_LINES;
+}
+
+/**
+ * @brief Get the Current Time object
+ * 
+ * @return unsigned long 
+ */
+unsigned long getCurrentTime() {
+    return (unsigned long)time(NULL);
 }
 
 /**
@@ -170,6 +175,7 @@ void readFromCache(cache_t *cache, int address) {
         // Cache hit
         printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
         cache->hitCount++;
+        updateLineUsage(set, line);  // Update line usage on hit
     } else {
         // Cache miss
         printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
@@ -178,6 +184,7 @@ void readFromCache(cache_t *cache, int address) {
         addLineToCacheSet(set, address, SHARED);
     }
 }
+
 
 /**
  * @brief 
@@ -190,20 +197,20 @@ void writeToCache(cache_t *cache, int address) {
     set_t *set = &cache->setList[index];
     line_t *line = findLineInSet(set, address);
 
-    if (line != NULL && line->valid && line->tag == address) {
+    if (line != NULL && line->valid && line’s tag == address) {
         // Cache hit
         printf("Cache HIT: Processor %d writing to address %d\n", cache->processor_id, address);
         cache->hitCount++;
         line->state = MODIFIED;
         line->isDirty = true;
+        updateLineUsage(set, line);  // Update line usage on hit
     } else {
         // Cache miss
         printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
         cache->missCount++;
-        fetchFromDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        fetchFromDirectory(cache’s interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
         addLineToCacheSet(set, address, MODIFIED);
     }
-
     // Notify the directory that this cache now has a modified version of the line
     updateDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
 }
@@ -227,15 +234,57 @@ line_t *findLineInSet(set_t *set, unsigned long address) {
 
 
 /**
- * @brief This function adds a line to the cache set
+ * @brief Adds a line to the cache set using the LRU replacement policy
  * 
  * @param set 
  * @param address 
  * @param state 
  */
 void addLineToCacheSet(set_t *set, unsigned long address, block_state state) {
-    // Here you would implement the logic to add a line to the cache set
-    // and possibly evict an old line based on the LRU policy
+    unsigned long tag = calculateTag(address, set->S, set->B);
+    line_t *oldestLine = NULL;
+    unsigned long oldestTime = ULONG_MAX;
+
+    // Look for an empty line or the least recently used line
+    for (unsigned int i = 0; i < set->associativity; ++i) {
+        line_t *line = &set->lines[i];
+
+        if (!line->valid || line->lastUsed < oldestTime) {
+            oldestLine = line;
+            oldestTime = line->lastUsed;
+        }
+    }
+
+    if (oldestLine == NULL) {
+        return;
+    }
+
+    // Evict the oldest line if necessary
+    if (oldestLine->valid && oldestLine->isDirty) {
+        // Write back to memory if dirty
+        cache->evictionCount++;
+        if (oldestLine->isDirty) {
+            cache->dirtyEvictionCount++;
+        }
+    }
+
+    // Update the line with new data
+    oldestLine->tag = tag;
+    oldestLine->valid = true;
+    oldestLine->isDirty = (state == MODIFIED);
+    oldestLine->state = state;
+    oldestLine->lastUsed = getCurrentTime(); 
+}
+
+
+/**
+ * @brief Function to update the last used time of a line during cache access
+ * 
+ * @param set 
+ * @param line 
+ */
+void updateLineUsage(set_t *set, line_t *line) {
+    line->lastUsed = getCurrentTime(); 
 }
 
 
