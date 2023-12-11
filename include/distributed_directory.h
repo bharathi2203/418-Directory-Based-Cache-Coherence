@@ -9,7 +9,7 @@
 #include <utils.h> 
 // Function declarations for directory
 void updateLineUsage(line_t *line);
-void processTraceLine(char *line, interconnect_t* interconnect);
+void processTraceLine(int processorId, char instr, unsigned long address);
 
 // Function declarations for benchmarking / testing 
 // void displayUsage(void);

@@ -80,7 +80,7 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
             }
         }
         // Respond with data
-        sendReadResponse(interconnect, sourceId, address);
+        sendReadResponse(sourceId, address);
         // Update line usage for LRU
         updateLineUsage(line);
     } else {
@@ -89,10 +89,10 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
     }
 }
 
-static void sendInvalidateToOthers(int sourceId, int address) {
+static void sendInvalidateToOthers(int sourceId, unsigned long address) {
     for(int i = 0; i < NUM_PROCESSORS; i++) {
         if(i != sourceId) {
-            sendInvalidate(interconnect, i, address);
+            sendInvalidate(sourceId, i, address);
         }
     }
 }
@@ -131,7 +131,7 @@ void processWriteRequest(cache_t *cache, int sourceId, unsigned long address) {
  * @param address 
  * @param data 
  */
-void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long address) {
+void sendReadResponse(int destId, unsigned long address) {
     // First, determine the current state of the line in the directory
     int index = directoryIndex(address);
     directory_entry_t* directoryLine = &interconnect->nodeList[destId].directory->lines[index];
@@ -141,7 +141,7 @@ void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long ad
         // If the line is exclusively modified by this cache, change state to SHARED
         directoryLine->state = DIR_SHARED;
         // Notify other caches about this change
-        notifyStateChangeToShared(interconnect, destId, address);
+        notifyStateChangeToShared(destId, address);
     }
 
     // Prepare the read response message
@@ -164,7 +164,7 @@ void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long ad
  * @param cacheId 
  * @param address 
  */
-void notifyStateChangeToShared(interconnect_t *interconnect, int cacheId, unsigned long address) {
+void notifyStateChangeToShared(int cacheId, unsigned long address) {
     // Iterate over all caches and notify them about the state change
     for (int i = 0; i < NUM_PROCESSORS; i++) {
         if (i != cacheId) {

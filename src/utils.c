@@ -69,7 +69,7 @@ void updateLineUsage(line_t *line) {
  * @param address 
  * @return int 
  */
-int directoryIndex(int address) {
+int directoryIndex(unsigned long address) {
    return address % NUM_LINES;
 }
 
@@ -86,11 +86,11 @@ int directoryIndex(int address) {
  * @param destId 
  * @param address 
  */
-void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long address) {
+void sendInvalidate(int srcId, int destId, unsigned long address) {
     // Create an INVALIDATE message
     message_t invalidateMsg = {
         .type = INVALIDATE,
-        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .sourceId = srcId, // -1 or a specific ID if the directory has an ID
         .destId = destId,
         .address = address
     };
@@ -270,7 +270,7 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
         for (int i = 0; i < NUM_PROCESSORS; i++) {
             if (i != cache_id) {
                 line->existsInCache[i] = false;
-                sendInvalidate(interconnect, i, address);
+                sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
             }
         }
     }

@@ -142,7 +142,7 @@ typedef struct {
     message_type type;
     int sourceId;
     int destId;
-    int address;
+    unsigned long address;
 } message_t;
 
 typedef struct node {
@@ -164,8 +164,8 @@ extern interconnect_t *interconnect;
 extern csim_stats_t *system_stats;
 
 void updateLineUsage(line_t *line);
-int directoryIndex(int address);
-void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long address);
+int directoryIndex(unsigned long address);
+void sendInvalidate(int srcID, int destId, unsigned long address);
 unsigned long getCurrentTime();
 unsigned long calculateTag(unsigned long address, unsigned long S, unsigned long B);
 directory_t* initializeDirectory(int numLines);

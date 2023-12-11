@@ -22,8 +22,10 @@ interconnect_t *createInterconnect(int numLines, int s, int e, int b) {
     }
 
     interconnect->incomingQueue = createQueue();
+    // printf("createInterconnect %p\n", (void*)interconnect->incomingQueue);
     interconnect->outgoingQueue = createQueue();
     if (!interconnect->incomingQueue || !interconnect->outgoingQueue) {
+        // printf("freeing queue in create\n");
         freeQueue(interconnect->incomingQueue);
         freeQueue(interconnect->outgoingQueue);
         free(interconnect);
@@ -39,6 +41,7 @@ interconnect_t *createInterconnect(int numLines, int s, int e, int b) {
                 freeDirectory(interconnect->nodeList[j].directory);
                 freeCache(interconnect->nodeList[j].cache);
             }
+            // printf("freeing queue in create\n");
             freeQueue(interconnect->incomingQueue);
             freeQueue(interconnect->outgoingQueue);
             free(interconnect);
@@ -59,7 +62,7 @@ interconnect_t *createInterconnect(int numLines, int s, int e, int b) {
  * @param address 
  * @return message_t 
  */
-message_t createMessage(message_type type, int srcId, int destId, int address) {
+message_t createMessage(message_type type, int srcId, int destId, unsigned long address) {
     message_t msg;
     msg.type = type;
     msg.sourceId = srcId;
@@ -73,31 +76,32 @@ message_t createMessage(message_type type, int srcId, int destId, int address) {
  * 
  * @param interconnect 
  */
-void processMessageQueue(interconnect_t* interconnect) {
+void processMessageQueue() {
     // Process incoming messages
     while (!isQueueEmpty(interconnect->incomingQueue)) {
         message_t msg = *(message_t *)dequeue(interconnect->incomingQueue);
         switch (msg.type) {
             case READ_REQUEST:
                 // Handle read requests
-                handleReadRequest(interconnect, msg);
+                printf("READ_REQUEST\n");
+                handleReadRequest(msg);
                 break;
             case WRITE_REQUEST:
                 // Handle write requests
-                handleWriteRequest(interconnect, msg);
+                handleWriteRequest(msg);
                 break;
             case INVALIDATE:
                 // Handle invalidate requests
-                handleInvalidateRequest(interconnect, msg);
+                handleInvalidateRequest(msg);
                 break;
             case READ_ACKNOWLEDGE:
-                handleReadAcknowledge(interconnect, msg);
+                handleReadAcknowledge(msg);
                 break;
             case INVALIDATE_ACK:
-                handleInvalidateAcknowledge(interconnect, msg);
+                handleInvalidateAcknowledge(msg);
                 break;
             case WRITE_ACKNOWLEDGE:
-                handleWriteAcknowledge(interconnect, msg);
+                handleWriteAcknowledge(msg);
                 break;
             default:
                 break;
@@ -115,11 +119,11 @@ void processMessageQueue(interconnect_t* interconnect) {
         switch (msg->type) {
             case READ_REQUEST:
                 // Process read request - possibly using readFromCache or similar function
-                readFromCache(cache, msg->address);
+                readFromCache(cache, msg->address, msg->sourceId);
                 break;
             case WRITE_REQUEST:
                 // Process write request - possibly using writeToCache or similar function
-                writeToCache(cache, msg->address);
+                writeToCache(cache, msg->address, msg->sourceId);
                 break;
             case INVALIDATE:
                 // Invalidate the cache line
@@ -150,25 +154,60 @@ void processMessageQueue(interconnect_t* interconnect) {
  * @param interconnect 
  * @param msg 
  */
-void handleReadRequest(interconnect_t* interconnect, message_t msg) {
+void handleReadRequest(message_t msg) {
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
     int index = directoryIndex(msg.address);
     directory_entry_t* entry = &dir->lines[index];
+    printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu", msg.sourceId, msg.destId, msg.address);
+    if(msg.destId == msg.sourceId) {
+        cache_t* cache = interconnect->nodeList[msg.destId].cache;
+        printf("address %lu on this node %d\n", msg.address, msg.destId);
+        // If the line is uncached or already shared, simply update presence bits
+        if (entry->state == DIR_UNCACHED || entry->state == DIR_SHARED) {
+            entry->state = DIR_SHARED;
+            entry->existsInCache[msg.sourceId] = true;
+        } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
+            // The line is currently exclusively modified in one cache.
+            // We need to downgrade it to shared and send it to the requesting cache.        
+            // sendDowngrade(interconnect, entry->owner, msg.address);
 
-    // If the line is uncached or already shared, simply update presence bits
-    if (entry->state == DIR_UNCACHED || entry->state == DIR_SHARED) {
-        entry->state = DIR_SHARED;
-        entry->existsInCache[msg.sourceId] = true;
-    } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
-        // The line is currently exclusively modified in one cache.
-        // We need to downgrade it to shared and send it to the requesting cache.        
-        // sendDowngrade(interconnect, entry->owner, msg.address);
+            // Update the directory to shared state
+            entry->state = DIR_SHARED;
+            entry->existsInCache[entry->owner] = true; // The owner still has it in shared state now
+            entry->existsInCache[msg.sourceId] = true; // The requester will have it in shared state
+            entry->owner = -1; // No single owner anymore
+        }
 
-        // Update the directory to shared state
-        entry->state = DIR_SHARED;
-        entry->existsInCache[entry->owner] = true; // The owner still has it in shared state now
-        entry->existsInCache[msg.sourceId] = true; // The requester will have it in shared state
-        entry->owner = -1; // No single owner anymore
+        // Cache Updates 
+        unsigned long address = msg.address;
+        int index = directoryIndex(address);
+        set_t *set = &cache->setList[index];
+        line_t *line = findLineInSet(*set, address);
+
+        if (line != NULL && line->valid && line->tag == address) {
+            // Cache hit
+            printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
+            cache->hitCount++;
+            updateLineUsage(line);  // Update line usage on hit
+        } else {
+            // Cache miss
+            printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
+            cache->missCount++;
+            // fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+            addLineToCacheSet(cache, set, address, EXCLUSIVE);
+        }
+
+    }
+    else {
+        message_t Readmsg = {
+            .type = READ_REQUEST,
+            .sourceId = msg.sourceId,
+            .destId = msg.destId,
+            .address = msg.address
+        };
+
+        // Enqueue the message to the outgoing queue
+        enqueue(interconnect->outgoingQueue, &Readmsg);
     }
 }
 
@@ -179,7 +218,7 @@ void handleReadRequest(interconnect_t* interconnect, message_t msg) {
  * @param interconnect 
  * @param msg 
  */
-void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
+void handleWriteRequest(message_t msg) {
     // Locate the directory for the destination node
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
     int index = directoryIndex(msg.address);
@@ -191,7 +230,7 @@ void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
         for (int i = 0; i < NUM_PROCESSORS; i++) {
             if (i != msg.sourceId && entry->existsInCache[i]) {
                 // Invalidate other caches
-                sendInvalidate(interconnect, i, msg.address);
+                sendInvalidate(msg.sourceId, i, msg.address);
                 entry->existsInCache[i] = false;
             }
         }
@@ -210,7 +249,7 @@ void handleWriteRequest(interconnect_t* interconnect, message_t msg) {
  * @param interconnect 
  * @param msg 
  */
-void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
+void handleInvalidateRequest(message_t msg) {
     // Invalidate the cache line in the specified cache
     cache_t* cache = interconnect->nodeList[msg.destId].cache;
     invalidateCacheLine(cache, msg.address);
@@ -233,7 +272,7 @@ void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
  * @param interconnect 
  * @param msg 
  */
-void handleReadAcknowledge(interconnect_t* interconnect, message_t msg) {
+void handleReadAcknowledge(message_t msg) {
     // Update cache with the data received
     cache_t* cache = interconnect->nodeList[msg.destId].cache;
     updateCacheLineState(cache, msg.address, SHARED);
@@ -246,7 +285,7 @@ void handleReadAcknowledge(interconnect_t* interconnect, message_t msg) {
  * @param interconnect 
  * @param msg 
  */
-void handleInvalidateAcknowledge(interconnect_t* interconnect, message_t msg) {
+void handleInvalidateAcknowledge(message_t msg) {
     // Update directory to reflect the cache line is invalidated
     directory_t* dir = interconnect->nodeList[msg.sourceId].directory;
     updateDirectoryState(dir, msg.address, DIR_UNCACHED);
@@ -259,7 +298,7 @@ void handleInvalidateAcknowledge(interconnect_t* interconnect, message_t msg) {
  * @param interconnect 
  * @param msg 
  */
-void handleWriteAcknowledge(interconnect_t* interconnect, message_t msg) {
+void handleWriteAcknowledge(message_t msg) {
     // Update cache line state to MODIFIED
     cache_t* cache = interconnect->nodeList[msg.sourceId].cache;
     // Check if the cache line exists and then update its state to MODIFIED
@@ -343,9 +382,11 @@ void updateDirectoryState(directory_t* directory, unsigned long address, directo
  * 
  * @param interconnect 
  */
-void freeInterconnect(interconnect_t *interconnect) {
+void freeInterconnect() {
     if (interconnect) {
+        // printf("freeInterconnect %p\n", (void*)interconnect->incomingQueue);
         if (interconnect->incomingQueue) {
+            printf("%d\n", queueSize(interconnect->incomingQueue));
             freeQueue(interconnect->incomingQueue);
         }
         if (interconnect->outgoingQueue) {
@@ -376,7 +417,7 @@ void freeInterconnect(interconnect_t *interconnect) {
  * @param cache         The cache from which data is to be read.
  * @param address       The memory address to read from.
  */
-void readFromCache(cache_t *cache, int address) {
+void readFromCache(cache_t *cache, unsigned long address, int srcID) {
     int index = directoryIndex(address);
     set_t *set = &cache->setList[index];
     line_t *line = findLineInSet(*set, address);
@@ -390,9 +431,11 @@ void readFromCache(cache_t *cache, int address) {
         // Cache miss
         printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
         cache->missCount++;
-        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        
+        printf("bringing line into cache\n");
         addLineToCacheSet(cache, set, address, SHARED);
     }
+    fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, srcID);
 }
 
 /**
@@ -412,7 +455,7 @@ void readFromCache(cache_t *cache, int address) {
  * @param cache             The cache where data is to be written.
  * @param address           The memory address to write to.
  */
-void writeToCache(cache_t *cache, int address) {
+void writeToCache(cache_t *cache, unsigned long address, int srcId) {
     int index = directoryIndex(address);
     set_t *set = &cache->setList[index];
     line_t *line = findLineInSet(*set, address);
@@ -428,11 +471,11 @@ void writeToCache(cache_t *cache, int address) {
         // Cache miss
         printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
         cache->missCount++;
-        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
         addLineToCacheSet(cache, set, address, MODIFIED);
     }
     // Notify the directory that this cache now has a modified version of the line
-    updateDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
+    fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, srcId);
+    updateDirectory(interconnect->nodeList[cache->processor_id].directory, address, srcId, DIR_EXCLUSIVE_MODIFIED);
 }
 
 /**
@@ -450,9 +493,10 @@ void writeToCache(cache_t *cache, int address) {
  * @param address                   The memory address of the cache line to fetch.
  * @param requestingProcessorId     The ID of the processor requesting the cache line.
  */
-void fetchFromDirectory(directory_t* directory, int address, int requestingProcessorId) {
+void fetchFromDirectory(directory_t* directory, unsigned long address, int requestingProcessorId) {
     int index = directoryIndex(address);
     directory_entry_t* line = &directory->lines[index];
+    int nodeID = address / NUM_LINES;
 
     // Check the state of the directory line
     if (line->state == DIR_EXCLUSIVE_MODIFIED) {
@@ -460,14 +504,15 @@ void fetchFromDirectory(directory_t* directory, int address, int requestingProce
         int owner = line->owner;
         if (owner != -1) {
             // Invalidate the line in the owner's cache
-            sendInvalidate(interconnect, owner, address);
+            sendInvalidate(nodeID, owner, address);
 
             // Simulate transferring the line to the requesting cache
-            sendFetch(interconnect, requestingProcessorId, address);
+            sendFetch(nodeID, requestingProcessorId, address);
         }
     } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
         // If the line is uncached or shared, fetch it from the memory
-        sendReadData(interconnect, requestingProcessorId, address, (line->state == DIR_UNCACHED));
+        printf("fetching from another directory, line is shared\n");
+        sendReadData(nodeID, requestingProcessorId, address, (line->state == DIR_UNCACHED));
     }
 
     // Update the directory entry
@@ -492,11 +537,11 @@ void fetchFromDirectory(directory_t* directory, int address, int requestingProce
  * @param address 
  * @param exclusive 
  */
-void sendReadData(interconnect_t* interconnect, int destId, unsigned long address, bool exclusive) {
+void sendReadData(int srcId, int destId, unsigned long address, bool exclusive) {
     // Create a READ_ACKNOWLEDGE message
     message_t readDataMsg = {
         .type = READ_ACKNOWLEDGE,
-        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .sourceId = srcId, // -1 or a specific ID if the directory has an ID
         .destId = destId,
         .address = address
     };
@@ -516,11 +561,11 @@ void sendReadData(interconnect_t* interconnect, int destId, unsigned long addres
  * @param destId 
  * @param address 
  */
-void sendFetch(interconnect_t* interconnect, int destId, unsigned long address) {
+void sendFetch(int srcId, int destId, unsigned long address) {
     // Create a FETCH message
     message_t fetchMsg = {
         .type = FETCH,
-        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .sourceId = srcId,
         .destId = destId,
         .address = address
     };
