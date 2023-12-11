@@ -8,10 +8,10 @@ LDIR =../lib
 
 LIBS=-lm
 
-_DEPS = distributed_directory.h interconnect.h queue.h single_cache.h
+_DEPS = queue.h utils.h single_cache.h distributed_directory.h interconnect.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
-_OBJ = distributed_directory.o interconnect.o queue.o single_cache.o
+_OBJ = queue.o utils.o single_cache.o distributed_directory.o interconnect.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 

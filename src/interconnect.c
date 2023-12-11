@@ -59,7 +59,7 @@ interconnect_t *createInterconnect(int numLines, int s, int e, int b) {
  * @param address 
  * @return message_t 
  */
-static message_t createMessage(message_type type, int srcId, int destId, int address) {
+message_t createMessage(message_type type, int srcId, int destId, int address) {
     message_t msg;
     msg.type = type;
     msg.sourceId = srcId;
@@ -76,8 +76,7 @@ static message_t createMessage(message_type type, int srcId, int destId, int add
 void processMessageQueue(interconnect_t* interconnect) {
     // Process incoming messages
     while (!isQueueEmpty(interconnect->incomingQueue)) {
-        message_t msg = dequeue(interconnect->incomingQueue);
-
+        message_t msg = *(message_t *)dequeue(interconnect->incomingQueue);
         switch (msg.type) {
             case READ_REQUEST:
                 // Handle read requests
@@ -107,36 +106,36 @@ void processMessageQueue(interconnect_t* interconnect) {
 
     // Process outgoing messages
     while (!isQueueEmpty(interconnect->outgoingQueue)) {
-        message_t msg = dequeue(interconnect->outgoingQueue);
+        message_t *msg = (message_t *)dequeue(interconnect->outgoingQueue);
 
-        node_t* node = &interconnect->nodeList[nodeId];
+        node_t* node = &interconnect->nodeList[msg->destId];
         cache_t* cache = node->cache;
         directory_t* dir = node->directory;
 
-        switch (msg.type) {
+        switch (msg->type) {
             case READ_REQUEST:
                 // Process read request - possibly using readFromCache or similar function
-                readFromCache(cache, msg.address);
+                readFromCache(cache, msg->address);
                 break;
             case WRITE_REQUEST:
                 // Process write request - possibly using writeToCache or similar function
-                writeToCache(cache, msg.address);
+                writeToCache(cache, msg->address);
                 break;
             case INVALIDATE:
                 // Invalidate the cache line
-                invalidateCacheLine(cache, msg.address);
+                invalidateCacheLine(cache, msg->address);
                 break;
             case READ_ACKNOWLEDGE:
                 // Update cache line state to SHARED
-                updateCacheLineState(cache, msg.address, SHARED);
+                updateCacheLineState(cache, msg->address, SHARED);
                 break;
             case INVALIDATE_ACK:
                 // Update directory state
-                updateDirectoryState(dir, msg.address, DIR_UNCACHED);
+                updateDirectoryState(dir, msg->address, DIR_UNCACHED);
                 break;
             case WRITE_ACKNOWLEDGE:
                 // Update cache line state to MODIFIED
-                updateCacheLineState(cache, msg.address, MODIFIED);
+                updateCacheLineState(cache, msg->address, MODIFIED);
                 break;
             default:
                 break;
@@ -224,7 +223,7 @@ void handleInvalidateRequest(interconnect_t* interconnect, message_t msg) {
     invalidateAckMsg.address = msg.address; // Address of the invalidated cache line
 
     // Enqueue the acknowledgment message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, invalidateAckMsg);
+    enqueue(interconnect->outgoingQueue, &invalidateAckMsg);
 }
 
 /**

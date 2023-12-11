@@ -3,10 +3,8 @@
  * @brief Implement a central directory based cache coherence protocol. 
  */
 
-#include "single_cache.h"
 #include "distributed_directory.h"
 #include "interconnect.h"
-
 /**
  * @brief Global Structs
  * 
@@ -14,114 +12,9 @@
 interconnect_t *interconnect = NULL;
 csim_stats_t *system_stats = NULL;
 
-/**
- * @brief Initialize the directory
- * 
- * @param numLines 
- * @param interconnect 
- * @return directory_t* 
- */
-directory_t* initializeDirectory(int numLines) {
-    directory_t* dir = (directory_t*)malloc(sizeof(directory_t));
-    if (!dir) {
-        return NULL;
-    }
-
-    dir->lines = (directory_entry_t*)calloc(numLines, sizeof(directory_entry_t));
-    if (!dir->lines) {
-        free(dir);
-        return NULL;
-    }
-
-    dir->numLines = numLines;
-
-    // Initialize each line in the directory
-    for (int i = 0; i < numLines; i++) {
-        dir->lines[i].state = DIR_UNCACHED;
-        memset(dir->lines[i].existsInCache, false, sizeof(bool) * NUM_PROCESSORS);
-        dir->lines[i].owner = -1;
-    }
-    return dir;
-}
 
 
-/**
- * @brief Helper function to find the directory index for a given address
- * 
- * @param address 
- * @return int 
- */
-int directoryIndex(int address) {
-   return address % NUM_LINES;
-}
 
-/**
- * @brief Get the Current Time object
- * 
- * @return unsigned long 
- */
-unsigned long getCurrentTime() {
-    return (unsigned long)time(NULL);
-}
-
-/**
- * @brief Free directory_t object. 
- * 
- * @param dir 
- */
-void freeDirectory(directory_t* dir) {
-    if (dir) {
-        if (dir->lines) {
-            free(dir->lines);
-        }
-        free(dir);
-    }
-}
-
-/**
- * @brief initializeSystem
- * 
- */
-void initializeSystem(void) {
-    // Allocate and initialize interconnect with queues
-    interconnect = createInterconnect();
-    interconnect->incomingQueue = createQueue();
-    interconnect->outgoingQueue = createQueue();
-
-    // Initialize NUMA nodes, each with its own cache and directory
-    for (int i = 0; i < NUM_PROCESSORS; ++i) {
-        interconnect->nodeList[i].directory = initializeDirectory(NUM_LINES, interconnect);
-        interconnect->nodeList[i].cache = initializeCache(s, e, b, i); // 's', 'e', and 'b' need to be defined based on the system's configuration
-    }
-}
-
-
-/**
- * @brief cleanup System
- * 
- */
-void cleanupSystem(void) {
-    // Cleanup all NUMA nodes
-    for (int i = 0; i < NUM_PROCESSORS; ++i) {
-        if (interconnect->nodeList[i].cache) {
-            freeCache(interconnect->nodeList[i].cache);
-        }
-        if (interconnect->nodeList[i].directory) {
-            freeDirectory(interconnect->nodeList[i].directory);
-        }
-    }
-
-    // Cleanup interconnect queues
-    if (interconnect) {
-        if (interconnect->incomingQueue) {
-            freeQueue(interconnect->incomingQueue);
-        }
-        if (interconnect->outgoingQueue) {
-            freeQueue(interconnect->outgoingQueue);
-        }
-        free(interconnect);
-    }
-}
 
 /**
  * @brief Fetches a cache line from the directory for a requesting processor. 
@@ -148,14 +41,14 @@ void fetchFromDirectory(directory_t* directory, int address, int requestingProce
         int owner = line->owner;
         if (owner != -1) {
             // Invalidate the line in the owner's cache
-            sendInvalidate(directory->interconnect, owner, address);
+            sendInvalidate(interconnect, owner, address);
 
             // Simulate transferring the line to the requesting cache
-            sendFetch(directory->interconnect, requestingProcessorId, address);
+            sendFetch(interconnect, requestingProcessorId, address);
         }
     } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
         // If the line is uncached or shared, fetch it from the memory
-        sendReadData(directory->interconnect, requestingProcessorId, address, (line->state == DIR_UNCACHED));
+        sendReadData(interconnect, requestingProcessorId, address, (line->state == DIR_UNCACHED));
     }
 
     // Update the directory entry
@@ -168,109 +61,14 @@ void fetchFromDirectory(directory_t* directory, int address, int requestingProce
 }
 
 /**
- * @brief Reads data from a specified address in the cache. 
- *
- * This function attempts to read data from the cache at a given address. 
- * It first checks if the desired line is in the cache (cache hit). If 
- * found and valid, it increments the hit counter and updates the line's 
- * usage for the LRU policy. 
- * 
- * In case of a cache miss, it increments the miss counter and then 
- * fetches the required line from the directory or another cache, 
- * updating the local cache with the shared state of the line. This 
- * function handles both hit and miss scenarios, ensuring proper cache 
- * coherence and consistency.
- * 
- * @param cache         The cache from which data is to be read.
- * @param address       The memory address to read from.
- */
-void readFromCache(cache_t *cache, int address) {
-    int index = directoryIndex(address);
-    set_t *set = &cache->setList[index];
-    line_t *line = findLineInSet(set, address);
-
-    if (line != NULL && line->valid && line->tag == address) {
-        // Cache hit
-        printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
-        cache->hitCount++;
-        updateLineUsage(set, line);  // Update line usage on hit
-    } else {
-        // Cache miss
-        printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
-        cache->missCount++;
-        fetchFromDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
-        addLineToCacheSet(set, address, SHARED);
-    }
-}
-
-
-/**
- * @brief Writes data to a specified address in the cache.
- * 
- * This function is responsible for writing data to the cache at a given address. 
- * It checks if the target line is present and valid in the cache (cache hit). If 
- * a hit occurs, it updates the line's state to MODIFIED, marks it as dirty, and 
- * updates its usage for LRU policy. 
- * 
- * In the event of a cache miss, it increments the miss counter, fetches the line 
- * from the directory or another cache, and adds it to the cache set with a 
- * MODIFIED state. This function also notifies the directory of any changes, 
- * ensuring the line is updated to the exclusive modified state in the directory, 
- * maintaining cache coherence.
- * 
- * @param cache             The cache where data is to be written.
- * @param address           The memory address to write to.
- */
-void writeToCache(cache_t *cache, int address) {
-    int index = directoryIndex(address);
-    set_t *set = &cache->setList[index];
-    line_t *line = findLineInSet(set, address);
-
-    if (line != NULL && line->valid && line’s tag == address) {
-        // Cache hit
-        printf("Cache HIT: Processor %d writing to address %d\n", cache->processor_id, address);
-        cache->hitCount++;
-        line->state = MODIFIED;
-        line->isDirty = true;
-        updateLineUsage(set, line);  // Update line usage on hit
-    } else {
-        // Cache miss
-        printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
-        cache->missCount++;
-        fetchFromDirectory(cache’s interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
-        addLineToCacheSet(set, address, MODIFIED);
-    }
-    // Notify the directory that this cache now has a modified version of the line
-    updateDirectory(cache->interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
-}
-
-
-/**
- * @brief This function finds a line in the cache set
- * 
- * @param set 
- * @param address 
- * @return line_t* 
- */
-line_t *findLineInSet(set_t *set, unsigned long address) {
-    for (int i = 0; i < set->associativity; i++) {
-        if (set->lines[i].tag == address && set->lines[i].valid) {
-            return &set->lines[i];
-        }
-    }
-    return NULL; // Line not found in cache set
-}
-
-
-/**
  * @brief Adds a line to the cache set using the LRU replacement policy
  * 
  * @param set 
  * @param address 
  * @param state 
  */
-void addLineToCacheSet(set_t *set, unsigned long address, block_state state) {
-    unsigned long tag = calculateTag(address, set->S, set->B);
+void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state) {
+    unsigned long tag = address >> (main_S + main_B);
     line_t *oldestLine = NULL;
     unsigned long oldestTime = ULONG_MAX;
 
@@ -307,17 +105,6 @@ void addLineToCacheSet(set_t *set, unsigned long address, block_state state) {
 
 
 /**
- * @brief Function to update the last used time of a line during cache access
- * 
- * @param set 
- * @param line 
- */
-void updateLineUsage(set_t *set, line_t *line) {
-    line->lastUsed = getCurrentTime(); 
-}
-
-
-/**
  * @brief This function updates the directory after a cache line write
  * 
  * @param directory 
@@ -338,7 +125,7 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
         for (int i = 0; i < NUM_PROCESSORS; i++) {
             if (i != cache_id) {
                 line->existsInCache[i] = false;
-                sendInvalidate(directory->interconnect, i, address);
+                sendInvalidate(interconnect, i, address);
             }
         }
     }
@@ -393,31 +180,7 @@ void sendReadData(interconnect_t* interconnect, int destId, unsigned long addres
     };
 
     // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, readDataMsg);
-}
-
-/**
- * @brief Handles the invalidation of a specific cache line across the caches in the NUMA system. 
- * 
- * It creates an INVALIDATE message to notify a cache node that a particular memory address in its 
- * cache needs to be invalidated. This function plays a pivotal role in maintaining cache coherence 
- * by ensuring that outdated or incorrect data is not used by any of the caches.
- * 
- * @param interconnect 
- * @param destId 
- * @param address 
- */
-void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long address) {
-    // Create an INVALIDATE message
-    message_t invalidateMsg = {
-        .type = INVALIDATE,
-        .sourceId = -1, // -1 or a specific ID if the directory has an ID
-        .destId = destId,
-        .address = address
-    };
-
-    // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, invalidateMsg);
+    enqueue(interconnect->outgoingQueue, &readDataMsg);
 }
 
 /**
@@ -441,7 +204,7 @@ void sendFetch(interconnect_t* interconnect, int destId, unsigned long address) 
     };
 
     // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, fetchMsg);
+    enqueue(interconnect->outgoingQueue, &fetchMsg);
 }
 
 
@@ -456,18 +219,28 @@ void processTraceLine(char *line, interconnect_t* interconnect) {
     char operation;
     int address;
 
+    message_t msg;
+
     // Parse the line to extract the processor ID, operation, and address
     if (sscanf(line, "%d %c %x", &processorId, &operation, &address) == 3) {
         // Convert the address to the local node's index, assuming the address includes the node information
-        int localNodeIndex = addressToLocalNodeIndex(address);
+        int localNodeIndex = address / NUM_LINES;
         switch (operation) {
             case 'R':
                 // Send a read request to the interconnect queue
-                enqueue(interconnect->incomingQueue, createMessage(READ_REQUEST, processorId, localNodeIndex, address));
+                msg.type = READ_REQUEST;
+                msg.sourceId = processorId;
+                msg.destId = localNodeIndex;
+                msg.address = address;
+                enqueue(interconnect->incomingQueue, &msg);
                 break;
             case 'W':
                 // Send a write request to the interconnect queue
-                enqueue(interconnect->incomingQueue, createMessage(WRITE_REQUEST, processorId, localNodeIndex, address));
+                msg.type = WRITE_REQUEST;
+                msg.sourceId = processorId;
+                msg.destId = localNodeIndex;
+                msg.address = address;
+                enqueue(interconnect->incomingQueue, &msg);
                 break;
             default:
                 fprintf(stderr, "Unknown operation '%c' in trace file\n", operation);
@@ -493,7 +266,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialize the system
-    initializeSystem();
+    createInterconnect(NUM_LINES, main_S, main_E, main_B);
 
     // Open the trace file
     FILE *traceFile = fopen(argv[1], "r");
@@ -513,7 +286,7 @@ int main(int argc, char *argv[]) {
     fclose(traceFile);
 
     // Cleanup resources
-    cleanupSystem();
+    freeInterconnect();
 
     return 0;
 }

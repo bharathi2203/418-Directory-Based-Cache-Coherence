@@ -15,71 +15,6 @@
 #include "single_cache.h"
 
 /**
- * @brief Initialize the cache with the given parameters.
- * 
- * @param s                 Number of set index bits
- * @param e                 Associativity: number of lines per set
- * @param b                 Number of block offset bits
- * @param processor_id      Identifier for the processor to which this cache belongs
- * @return cache_t*         Pointer to the newly allocated cache
- */
-cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id) {
-    // Calculate the number of sets from the number of set index bits
-    unsigned long numSets = 1UL << s;
-
-    // Allocate memory for the cache structure
-    cache_t *cache = malloc(sizeof(cache_t));
-    if (cache == NULL) {
-        return NULL;
-    }
-
-    // Initialize the cache structure
-    cache->processor_id = processor_id;
-    cache->S = s;
-    cache->E = e;
-    cache->B = b;
-    cache->hitCount = 0;
-    cache->missCount = 0;
-    cache->evictionCount = 0;
-    cache->dirtyEvictionCount = 0;
-
-    // Allocate memory for the array of sets
-    cache->setList = malloc(numSets * sizeof(set_t));
-    if (cache->setList == NULL) {
-        free(cache); // Free the cache structure if set allocation fails
-        return NULL;
-    }
-
-    // Initialize each set in the cache
-    for (unsigned int i = 0; i < numSets; i++) {
-        // Allocate memory for the lines within a set
-        cache->setList[i].lines = malloc(e * sizeof(line_t));
-        cache->setList[i].associativity = e;
-
-        if (cache->setList[i].lines == NULL) {
-            // Free previously allocated memory if any line allocation fails
-            for (unsigned int j = 0; j < i; j++) {
-                free(cache->setList[j].lines);
-            }
-            free(cache->setList);
-            free(cache);
-            return NULL;
-        }
-
-        // Initialize each line within the set
-        for (unsigned int j = 0; j < e; j++) {
-            cache->setList[i].lines[j].tag = 0;
-            cache->setList[i].lines[j].valid = false;
-            cache->setList[i].lines[j].isDirty = false;
-            cache->setList[i].lines[j].state = INVALID;
-            cache->setList[i].lines[j].lastUsed = 0;
-        }
-    }
-
-    return cache;
-}
-
-/**
  * @brief Computes the set index for a given memory address in the cache.
  * 
  * @param address 
@@ -89,18 +24,6 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
  */
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B) {
     return (address >> B) & ((1UL << S) - 1);
-}
-
-/**
- * @brief Determines the tag portion of a given memory address for cache storage.
- * 
- * @param address 
- * @param S 
- * @param B 
- * @return unsigned long 
- */
-unsigned long calculateTag(unsigned long address, unsigned long S, unsigned long B) {
-    return address >> (S + B);
 }
 
 /**
@@ -127,7 +50,8 @@ line_t* findLineInSet(set_t set, unsigned long tag) {
  */
 int findCacheWithLine(unsigned long address) {
     int nodeId = address / NUM_PROCESSORS; // Hypothetical way to map address to node ID.
-    directory_entry_t* directoryLine = &directory->lines[nodeId];
+    int lineIndex = directoryIndex(address);
+    directory_entry_t* directoryLine = &(interconnect->nodeList[nodeId].directory->lines[lineIndex]);
 
     // If the line is in EXCLUSIVE or MODIFIED state, that means only one cache has it.
     if (directoryLine->state == DIR_EXCLUSIVE_MODIFIED) {
@@ -174,24 +98,31 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
                 // Create a message to notify other caches about the state change
                 message_t stateChangeMsg;
                 stateChangeMsg.type = INVALIDATE; // Using INVALIDATE type to signify a state change
-                stateChangeMsg.sourceId = cacheId; // ID of the cache initiating the state change
+                stateChangeMsg.sourceId = cache->processor_id; // ID of the cache initiating the state change
                 stateChangeMsg.destId = i; // ID of the cache being notified
                 stateChangeMsg.address = address; // Address of the cache line
 
                 // Enqueue the message to the outgoing queue
-                enqueue(interconnect->outgoingQueue, stateChangeMsg);
+                enqueue(interconnect->outgoingQueue, &stateChangeMsg);
             }
         }
         // Respond with data
-        sendReadResponse(interconnect, sourceId, address, line->data);
+        sendReadResponse(interconnect, sourceId, address);
         // Update line usage for LRU
-        updateLineUsage(&cache->setList[setIndex], line);
+        updateLineUsage(line);
     } else {
         // Cache miss, fetch from directory or another cache
         fetchDataFromDirectoryOrCache(cache, address);
     }
 }
 
+static void sendInvalidateToOthers(int sourceId, int address) {
+    for(int i = 0; i < NUM_PROCESSORS; i++) {
+        if(i != sourceId) {
+            sendInvalidate(interconnect, i, address);
+        }
+    }
+}
 
 /**
  * @brief Manages write requests, updating cache lines and invalidating others as necessary.
@@ -210,32 +141,11 @@ void processWriteRequest(cache_t *cache, int sourceId, unsigned long address) {
         line->state = MODIFIED;
         line->isDirty = true;
         // Invalidate other caches
-        sendInvalidateToOthers(interconnect, sourceId, address);
-        updateLineUsage(cache->setList[setIndex], line);
+        sendInvalidateToOthers(sourceId, address);
+        updateLineUsage(line);
     } else {
         // Cache miss, handle it
         fetchDataFromDirectoryOrCache(cache, address);
-    }
-}
-
-
-/**
- * @brief Marks a specific cache line as invalid.
- * 
- * @param cache 
- * @param address 
- */
-void invalidateCacheLine(cache_t *cache, unsigned long address) {
-    unsigned long setIndex = (address >> cache->B) & ((1UL << cache->S) - 1);
-    unsigned long tag = address >> (cache->B + cache->S);
-
-    for (unsigned int i = 0; i < cache->E; ++i) {
-        line_t *line = &cache->setList[setIndex].lines[i];
-        if (line->tag == tag && line->valid) {
-            // Simply invalidate the line without handling dirty data
-            line->valid = false;
-            line->state = INVALID;
-        }
     }
 }
 
@@ -251,26 +161,26 @@ void invalidateCacheLine(cache_t *cache, unsigned long address) {
 void sendReadResponse(interconnect_t *interconnect, int destId, unsigned long address) {
     // First, determine the current state of the line in the directory
     int index = directoryIndex(address);
-    directory_entry_t* directoryLine = &interconnect->nodeList[interconnect->processor_id].directory->lines[index];
+    directory_entry_t* directoryLine = &interconnect->nodeList[destId].directory->lines[index];
 
     // Check the state and update accordingly
-    if (directoryLine->state == DIR_EXCLUSIVE_MODIFIED && directoryLine->owner == interconnect->processor_id) {
+    if (directoryLine->state == DIR_EXCLUSIVE_MODIFIED && directoryLine->owner == destId) {
         // If the line is exclusively modified by this cache, change state to SHARED
         directoryLine->state = DIR_SHARED;
         // Notify other caches about this change
-        notifyStateChangeToShared(interconnect, interconnect->processor_id, address);
+        notifyStateChangeToShared(interconnect, destId, address);
     }
 
     // Prepare the read response message
     message_t readResponse;
     readResponse.type = READ_ACKNOWLEDGE;
-    readResponse.sourceId = interconnect->nodeList[interconnect->processor_id].cache->processor_id;
+    readResponse.sourceId = destId;
     readResponse.destId = destId;
     readResponse.address = address;
     // readResponse.data = data; // Include data if needed
 
     // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, readResponse);
+    enqueue(interconnect->outgoingQueue, &readResponse);
 }
 
 
@@ -293,7 +203,7 @@ void notifyStateChangeToShared(interconnect_t *interconnect, int cacheId, unsign
             stateChangeMsg.address = address;
 
             // Enqueue the state update message to the outgoing queue
-            enqueue(interconnect->outgoingQueue, stateChangeMsg);
+            enqueue(interconnect->outgoingQueue, &stateChangeMsg);
         }
     }
 }
@@ -305,43 +215,45 @@ void notifyStateChangeToShared(interconnect_t *interconnect, int cacheId, unsign
  * @param destId 
  * @param address 
  */
-void sendWriteAcknowledge(interconnect_t *interconnect, int destId, unsigned long address) {
-    // Update the state of the line in the directory
-    int index = directoryIndex(address);
-    directory_entry_t* directoryLine = &interconnect->nodeList[interconnect->processor_id].directory->lines[index];
+// void sendWriteAcknowledge(interconnect_t *interconnect, int destId, unsigned long address) {
+//     // Update the state of the line in the directory
+//     int index = directoryIndex(address);
+//     int nodeID = address / NUM_LINES;
+//     directory_entry_t* directoryLine = &interconnect->nodeList[nodeID].directory->lines[index];
 
-    // If this cache is the new owner of the line, update the directory
-    if (directoryLine->state != DIR_EXCLUSIVE_MODIFIED || directoryLine->owner != interconnect->processor_id) {
-        // Invalidate other caches holding the line
-        for (int i = 0; i < NUM_PROCESSORS; i++) {
-            if (i != interconnect->processor_id && directoryLine->existsInCache[i]) {
-                // Prepare invalidate messages for other caches
-                message_t invalidateMsg;
-                invalidateMsg.type = INVALIDATE;
-                invalidateMsg.sourceId = interconnect->processor_id;
-                invalidateMsg.destId = i;
-                invalidateMsg.address = address;
+//     // If this cache is the new owner of the line, update the directory
+//     if (directoryLine->state != DIR_EXCLUSIVE_MODIFIED || directoryLine->owner != nodeID) {
+//         // Invalidate other caches holding the line
+//         for (int i = 0; i < NUM_PROCESSORS; i++) {
+//             if (i != interconnect->processor_id && directoryLine->existsInCache[i]) {
+//                 // Prepare invalidate messages for other caches
+//                 message_t invalidateMsg;
+//                 invalidateMsg.type = INVALIDATE;
+//                 invalidateMsg.sourceId = interconnect->processor_id;
+//                 invalidateMsg.destId = i;
+//                 invalidateMsg.address = address;
 
-                enqueue(interconnect->outgoingQueue, invalidateMsg);
-                directoryLine->existsInCache[i] = false;
-            }
-        }
+//                 enqueue(interconnect->outgoingQueue, (void*)invalidateMsg);
+//                 directoryLine->existsInCache[i] = false;
+//             }
+//         }
 
-        // Update the directory to reflect this cache as the exclusive modifier
-        directoryLine->state = DIR_EXCLUSIVE_MODIFIED;
-        directoryLine->owner = interconnect->processor_id;
-        directoryLine->existsInCache[interconnect->processor_id] = true;
-    }
+//         // Update the directory to reflect this cache as the exclusive modifier
+//         directoryLine->state = DIR_EXCLUSIVE_MODIFIED;
+//         directoryLine->owner = interconnect->processor_id;
+//         directoryLine->existsInCache[interconnect->processor_id] = true;
+//     }
 
-    // Prepare the write acknowledge message
-    message_t writeAck;
-    writeAck.type = WRITE_ACKNOWLEDGE;
-    writeAck.sourceId = interconnect->nodeList[interconnect->processor_id].cache->processor_id;
-    writeAck.destId = destId;
-    writeAck.address = address;
+//     // Prepare the write acknowledge message
+//     message_t writeAck;
+//     writeAck.type = WRITE_ACKNOWLEDGE;
+//     //writeAck.sourceId = interconnect->nodeList[nodeID].cache->processor_id;
+//     writeAck.sourceId = nodeID;
+//     writeAck.destId = destId;
+//     writeAck.address = address;
 
-    enqueue(interconnect->outgoingQueue, writeAck);
-}
+//     enqueue(interconnect->outgoingQueue, &writeAck);
+// }
 
 
 /**
@@ -397,12 +309,20 @@ void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address) {
 
         if (cacheIdWithData != -1) {
             // Data is in another cache, send FETCH message
-            message_t fetchMsg = createMessage(FETCH, cache->processor_id, cacheIdWithData, address);
-            enqueue(interconnect->outgoingQueue, fetchMsg);
+            message_t fetchMsg;
+            fetchMsg.type = FETCH;
+            fetchMsg.sourceId = cache->processor_id;
+            fetchMsg.destId = cacheIdWithData;
+            fetchMsg.address = address;
+            enqueue(interconnect->outgoingQueue, &fetchMsg);
         } else {
             // Data is not in any cache, fetch from directory
-            message_t readRequest = createMessage(READ_REQUEST, cache->processor_id, address / NUM_PROCESSORS , address);
-            enqueue(interconnect->outgoingQueue, readRequest);
+            message_t readRequest;
+            readRequest.type = READ_REQUEST;
+            readRequest.sourceId = cache->processor_id;
+            readRequest.destId = address / NUM_PROCESSORS;
+            readRequest.address = address;
+            enqueue(interconnect->outgoingQueue, &readRequest);
         }
     }
 }
@@ -433,34 +353,6 @@ void printCache(cache_t *cache) {
                    j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed);
         }
     }
-}
-
-
-/**
- * @brief Releases all memory allocated to a cache.
- * 
- * @param cache The cache to be freed.
- */
-void freeCache(cache_t *cache) {
-    if (cache == NULL) {
-        return;
-    }
-
-    // Free each set and its constituent lines
-    for (unsigned long i = 0; i < (1UL << cache->S); i++) {
-        set_t *set = &cache->setList[i];
-        if (set->lines != NULL) {
-            free(set->lines); // Free the array of lines in each set
-            set->lines = NULL;
-        }
-    }
-
-    // Free the array of sets
-    free(cache->setList);
-    cache->setList = NULL;
-
-    // Finally, free the cache itself
-    free(cache);
 }
 
 

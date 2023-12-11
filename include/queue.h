@@ -5,6 +5,8 @@
 #ifndef QUEUE_H
 #define QUEUE_H
 
+#include <stdbool.h> 
+
 typedef struct QueueNode {
     void* data;
     struct QueueNode* next;
