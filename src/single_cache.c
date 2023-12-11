@@ -14,33 +14,6 @@
 #include <assert.h>
 #include "single_cache.h"
 
-/**
- * @brief Computes the set index for a given memory address in the cache.
- * 
- * @param address 
- * @param S 
- * @param B 
- * @return unsigned long 
- */
-unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B) {
-    return (address >> B) & ((1UL << S) - 1);
-}
-
-/**
- * @brief Locates a specific cache line within a set by its tag.
- * 
- * @param set 
- * @param tag 
- * @return line_t* 
- */
-line_t* findLineInSet(set_t set, unsigned long tag) {
-    for (unsigned int i = 0; i < set.associativity; ++i) {
-        if (set.lines[i].tag == tag && set.lines[i].valid) {
-            return &set.lines[i];
-        }
-    }
-    return NULL;  // Line not found
-}
 
 /**
  * @brief Identifies the cache containing a specific line based on the memory address.
@@ -255,34 +228,6 @@ void notifyStateChangeToShared(interconnect_t *interconnect, int cacheId, unsign
 //     enqueue(interconnect->outgoingQueue, &writeAck);
 // }
 
-
-/**
- * @brief Updates the state of a specific cache line.
- * 
- * @param cache 
- * @param address 
- * @param newState 
- * @return true 
- * @return false 
- */
-bool updateCacheLineState(cache_t *cache, unsigned long address, block_state newState) {
-    unsigned long setIndex = calculateSetIndex(address, cache->S, cache->B);
-    unsigned long tag = calculateTag(address, cache->S, cache->B);
-    bool lineFound = false;
-
-    for (unsigned int i = 0; i < cache->E; ++i) {
-        line_t *line = &cache->setList[setIndex].lines[i];
-        if (line->tag == tag && line->valid) {
-            line->state = newState;
-            lineFound = true;
-            break;
-        }
-    }
-
-    // Additional logic for directory update
-
-    return lineFound;
-}
 
 /**
  * @brief Retrieves data from another cache or directory on a cache miss.

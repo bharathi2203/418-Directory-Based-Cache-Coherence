@@ -19,6 +19,14 @@ void handleReadAcknowledge(interconnect_t* interconnect, message_t msg);
 void handleInvalidateAcknowledge(interconnect_t* interconnect, message_t msg);
 void handleWriteAcknowledge(interconnect_t* interconnect, message_t msg);
 void freeInterconnect();
+void readFromCache(cache_t *cache, int address);
+void writeToCache(cache_t *cache, int address);
+void fetchFromDirectory(directory_t* directory, int address, int requestingProcessorId);
+void sendFetch(interconnect_t* interconnect, int destId, unsigned long address);
+void sendReadData(interconnect_t* interconnect, int destId, unsigned long address, bool exclusive);
+void freeDirectory(directory_t* dir);
+void updateDirectoryState(directory_t* directory, unsigned long address, directory_state newState);
+bool updateCacheLineState(cache_t *cache, unsigned long address, block_state newState);
 
 #endif // INTERCONNECT_H
 

@@ -172,8 +172,10 @@ directory_t* initializeDirectory(int numLines);
 cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int processor_id);
 void freeDirectory(directory_t* dir);
 void freeCache(cache_t *cache);
-void readFromCache(cache_t *cache, int address);
-void writeToCache(cache_t *cache, int address);
 void invalidateCacheLine(cache_t *cache, unsigned long address);
+line_t* findLineInSet(set_t set, unsigned long tag);
+void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state);
+void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState);
+unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
 
 #endif // DATA_DEF_H

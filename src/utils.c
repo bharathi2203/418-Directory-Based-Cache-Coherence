@@ -9,6 +9,49 @@ unsigned long getCurrentTime() {
     return (unsigned long)time(NULL);
 }
 
+/**
+ * @brief Adds a line to the cache set using the LRU replacement policy
+ * 
+ * @param set 
+ * @param address 
+ * @param state 
+ */
+void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state) {
+    unsigned long tag = address >> (main_S + main_B);
+    line_t *oldestLine = NULL;
+    unsigned long oldestTime = ULONG_MAX;
+
+    // Look for an empty line or the least recently used line
+    for (unsigned int i = 0; i < set->associativity; ++i) {
+        line_t *line = &set->lines[i];
+
+        if (!line->valid || line->lastUsed < oldestTime) {
+            oldestLine = line;
+            oldestTime = line->lastUsed;
+        }
+    }
+
+    if (oldestLine == NULL) {
+        return;
+    }
+
+    // Evict the oldest line if necessary
+    if (oldestLine->valid && oldestLine->isDirty) {
+        // Write back to memory if dirty
+        cache->evictionCount++;
+        if (oldestLine->isDirty) {
+            cache->dirtyEvictionCount++;
+        }
+    }
+
+    // Update the line with new data
+    oldestLine->tag = tag;
+    oldestLine->valid = true;
+    oldestLine->isDirty = (state == MODIFIED);
+    oldestLine->state = state;
+    oldestLine->lastUsed = getCurrentTime(); 
+}
+
 
 /**
  * @brief Function to update the last used time of a line during cache access
@@ -66,6 +109,18 @@ void sendInvalidate(interconnect_t* interconnect, int destId, unsigned long addr
  */
 unsigned long calculateTag(unsigned long address, unsigned long S, unsigned long B) {
     return address >> (S + B);
+}
+
+/**
+ * @brief Computes the set index for a given memory address in the cache.
+ * 
+ * @param address 
+ * @param S 
+ * @param B 
+ * @return unsigned long 
+ */
+unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B) {
+    return (address >> B) & ((1UL << S) - 1);
 }
 
 /**
@@ -163,19 +218,6 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
     return cache;
 }
 
-/**
- * @brief Free directory_t object. 
- * 
- * @param dir 
- */
-void freeDirectory(directory_t* dir) {
-    if (dir) {
-        if (dir->lines) {
-            free(dir->lines);
-        }
-        free(dir);
-    }
-}
 
 
 /**
@@ -208,81 +250,31 @@ void freeCache(cache_t *cache) {
 
 
 /**
- * @brief Reads data from a specified address in the cache. 
- *
- * This function attempts to read data from the cache at a given address. 
- * It first checks if the desired line is in the cache (cache hit). If 
- * found and valid, it increments the hit counter and updates the line's 
- * usage for the LRU policy. 
+ * @brief This function updates the directory after a cache line write
  * 
- * In case of a cache miss, it increments the miss counter and then 
- * fetches the required line from the directory or another cache, 
- * updating the local cache with the shared state of the line. This 
- * function handles both hit and miss scenarios, ensuring proper cache 
- * coherence and consistency.
- * 
- * @param cache         The cache from which data is to be read.
- * @param address       The memory address to read from.
+ * @param directory 
+ * @param address 
+ * @param cache_id 
+ * @param newState 
  */
-void readFromCache(cache_t *cache, int address) {
+void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState) {
     int index = directoryIndex(address);
-    set_t *set = &cache->setList[index];
-    line_t *line = findLineInSet(set, address);
+    directory_entry_t* line = &directory->lines[index];
 
-    if (line != NULL && line->valid && line->tag == address) {
-        // Cache hit
-        printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
-        cache->hitCount++;
-        updateLineUsage(line);  // Update line usage on hit
-    } else {
-        // Cache miss
-        printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
-        cache->missCount++;
-        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
-        addLineToCacheSet(cache, set, address, SHARED);
+    // Update the directory entry based on the new state
+    line->state = newState;
+    line->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? cache_id : -1;
+
+    // Invalidate other caches if necessary
+    if (newState == DIR_EXCLUSIVE_MODIFIED) {
+        for (int i = 0; i < NUM_PROCESSORS; i++) {
+            if (i != cache_id) {
+                line->existsInCache[i] = false;
+                sendInvalidate(interconnect, i, address);
+            }
+        }
     }
 }
-
-/**
- * @brief Writes data to a specified address in the cache.
- * 
- * This function is responsible for writing data to the cache at a given address. 
- * It checks if the target line is present and valid in the cache (cache hit). If 
- * a hit occurs, it updates the line's state to MODIFIED, marks it as dirty, and 
- * updates its usage for LRU policy. 
- * 
- * In the event of a cache miss, it increments the miss counter, fetches the line 
- * from the directory or another cache, and adds it to the cache set with a 
- * MODIFIED state. This function also notifies the directory of any changes, 
- * ensuring the line is updated to the exclusive modified state in the directory, 
- * maintaining cache coherence.
- * 
- * @param cache             The cache where data is to be written.
- * @param address           The memory address to write to.
- */
-void writeToCache(cache_t *cache, int address) {
-    int index = directoryIndex(address);
-    set_t *set = &cache->setList[index];
-    line_t *line = findLineInSet(set, address);
-
-    if (line != NULL && line->valid && calculateTag(address, main_S, main_B) == address) {
-        // Cache hit
-        printf("Cache HIT: Processor %d writing to address %d\n", cache->processor_id, address);
-        cache->hitCount++;
-        line->state = MODIFIED;
-        line->isDirty = true;
-        updateLineUsage(line);  // Update line usage on hit
-    } else {
-        // Cache miss
-        printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
-        cache->missCount++;
-        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
-        addLineToCacheSet(cache, set, address, MODIFIED);
-    }
-    // Notify the directory that this cache now has a modified version of the line
-    updateDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
-}
-
 
 
 /**
@@ -304,3 +296,20 @@ void invalidateCacheLine(cache_t *cache, unsigned long address) {
         }
     }
 }
+
+/**
+ * @brief Locates a specific cache line within a set by its tag.
+ * 
+ * @param set 
+ * @param tag 
+ * @return line_t* 
+ */
+line_t* findLineInSet(set_t set, unsigned long tag) {
+    for (unsigned int i = 0; i < set.associativity; ++i) {
+        if (set.lines[i].tag == tag && set.lines[i].valid) {
+            return &set.lines[i];
+        }
+    }
+    return NULL;  // Line not found
+}
+

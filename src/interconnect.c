@@ -268,6 +268,74 @@ void handleWriteAcknowledge(interconnect_t* interconnect, message_t msg) {
     }
 }
 
+/**
+ * @brief Free directory_t object. 
+ * 
+ * @param dir 
+ */
+void freeDirectory(directory_t* dir) {
+    if (dir) {
+        if (dir->lines) {
+            free(dir->lines);
+        }
+        free(dir);
+    }
+}
+
+/**
+ * @brief Updates the state of a specific cache line.
+ * 
+ * @param cache 
+ * @param address 
+ * @param newState 
+ * @return true 
+ * @return false 
+ */
+bool updateCacheLineState(cache_t *cache, unsigned long address, block_state newState) {
+    unsigned long setIndex = calculateSetIndex(address, cache->S, cache->B);
+    unsigned long tag = calculateTag(address, cache->S, cache->B);
+    bool lineFound = false;
+
+    for (unsigned int i = 0; i < cache->E; ++i) {
+        line_t *line = &cache->setList[setIndex].lines[i];
+        if (line->tag == tag && line->valid) {
+            line->state = newState;
+            lineFound = true;
+            break;
+        }
+    }
+
+    // Additional logic for directory update
+
+    return lineFound;
+}
+
+/**
+ * @brief Updates the state of a cache line in the directory.
+ * 
+ * @param directory The directory containing the cache line.
+ * @param address The address of the cache line to update.
+ * @param newState The new state to set for the cache line.
+ */
+void updateDirectoryState(directory_t* directory, unsigned long address, directory_state newState) {
+    if (!directory) return; // Safety check
+
+    int index = directoryIndex(address); // Get the index of the cache line in the directory
+    directory_entry_t* line = &directory->lines[index]; // Access the directory line
+
+    // Update the state of the directory line
+    line->state = newState;
+
+    // Reset owner and presence bits if the state is DIR_UNCACHED
+    if (newState == DIR_UNCACHED) {
+        line->owner = -1;
+        for (int i = 0; i < NUM_PROCESSORS; i++) {
+            line->existsInCache[i] = false;
+        }
+    }
+}
+
+
 
 /**
  * @brief Safely deallocates memory and resources associated with the 
@@ -289,4 +357,174 @@ void freeInterconnect(interconnect_t *interconnect) {
         }
         free(interconnect);
     }
+}
+
+/**
+ * @brief Reads data from a specified address in the cache. 
+ *
+ * This function attempts to read data from the cache at a given address. 
+ * It first checks if the desired line is in the cache (cache hit). If 
+ * found and valid, it increments the hit counter and updates the line's 
+ * usage for the LRU policy. 
+ * 
+ * In case of a cache miss, it increments the miss counter and then 
+ * fetches the required line from the directory or another cache, 
+ * updating the local cache with the shared state of the line. This 
+ * function handles both hit and miss scenarios, ensuring proper cache 
+ * coherence and consistency.
+ * 
+ * @param cache         The cache from which data is to be read.
+ * @param address       The memory address to read from.
+ */
+void readFromCache(cache_t *cache, int address) {
+    int index = directoryIndex(address);
+    set_t *set = &cache->setList[index];
+    line_t *line = findLineInSet(*set, address);
+
+    if (line != NULL && line->valid && line->tag == address) {
+        // Cache hit
+        printf("Cache HIT: Processor %d reading address %d\n", cache->processor_id, address);
+        cache->hitCount++;
+        updateLineUsage(line);  // Update line usage on hit
+    } else {
+        // Cache miss
+        printf("Cache MISS: Processor %d reading address %d\n", cache->processor_id, address);
+        cache->missCount++;
+        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        addLineToCacheSet(cache, set, address, SHARED);
+    }
+}
+
+/**
+ * @brief Writes data to a specified address in the cache.
+ * 
+ * This function is responsible for writing data to the cache at a given address. 
+ * It checks if the target line is present and valid in the cache (cache hit). If 
+ * a hit occurs, it updates the line's state to MODIFIED, marks it as dirty, and 
+ * updates its usage for LRU policy. 
+ * 
+ * In the event of a cache miss, it increments the miss counter, fetches the line 
+ * from the directory or another cache, and adds it to the cache set with a 
+ * MODIFIED state. This function also notifies the directory of any changes, 
+ * ensuring the line is updated to the exclusive modified state in the directory, 
+ * maintaining cache coherence.
+ * 
+ * @param cache             The cache where data is to be written.
+ * @param address           The memory address to write to.
+ */
+void writeToCache(cache_t *cache, int address) {
+    int index = directoryIndex(address);
+    set_t *set = &cache->setList[index];
+    line_t *line = findLineInSet(*set, address);
+
+    if (line != NULL && line->valid && calculateTag(address, main_S, main_B) == address) {
+        // Cache hit
+        printf("Cache HIT: Processor %d writing to address %d\n", cache->processor_id, address);
+        cache->hitCount++;
+        line->state = MODIFIED;
+        line->isDirty = true;
+        updateLineUsage(line);  // Update line usage on hit
+    } else {
+        // Cache miss
+        printf("Cache MISS: Processor %d writing to address %d\n", cache->processor_id, address);
+        cache->missCount++;
+        fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        addLineToCacheSet(cache, set, address, MODIFIED);
+    }
+    // Notify the directory that this cache now has a modified version of the line
+    updateDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
+}
+
+/**
+ * @brief Fetches a cache line from the directory for a requesting processor. 
+ *
+ * This function handles fetching a cache line from the directory based on its 
+ * current state and updates its state accordingly. If the cache line is exclusively 
+ * modified, it fetches the line from the owning cache and invalidates it there. 
+ *
+ * For uncached or shared lines, it fetches the line directly from the main memory. 
+ * Finally, it updates the directory entry, setting the line to shared state 
+ * and recording its presence in the requesting processor's cache.
+ * 
+ * @param directory                 The directory from which the cache line is fetched.
+ * @param address                   The memory address of the cache line to fetch.
+ * @param requestingProcessorId     The ID of the processor requesting the cache line.
+ */
+void fetchFromDirectory(directory_t* directory, int address, int requestingProcessorId) {
+    int index = directoryIndex(address);
+    directory_entry_t* line = &directory->lines[index];
+
+    // Check the state of the directory line
+    if (line->state == DIR_EXCLUSIVE_MODIFIED) {
+        // If the line is exclusively modified, we need to fetch it from the owning cache
+        int owner = line->owner;
+        if (owner != -1) {
+            // Invalidate the line in the owner's cache
+            sendInvalidate(interconnect, owner, address);
+
+            // Simulate transferring the line to the requesting cache
+            sendFetch(interconnect, requestingProcessorId, address);
+        }
+    } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
+        // If the line is uncached or shared, fetch it from the memory
+        sendReadData(interconnect, requestingProcessorId, address, (line->state == DIR_UNCACHED));
+    }
+
+    // Update the directory entry
+    line->state = DIR_SHARED;
+    line->owner = -1;
+    for (int i = 0; i < NUM_PROCESSORS; i++) {
+        line->existsInCache[i] = false;
+    }
+    line->existsInCache[requestingProcessorId] = true;
+}
+
+/**
+ * @brief Sends a read data acknowledgment message via the interconnect system. 
+ * 
+ * It creates a READ_ACKNOWLEDGE message specifying the source ID (often the directory's 
+ * ID), the destination cache ID, and the memory address of the data. The message is 
+ * then enqueued in the interconnect's outgoing queue, signaling that the requested data 
+ * is ready to be sent to the requesting cache node.
+ * 
+ * @param interconnect 
+ * @param destId 
+ * @param address 
+ * @param exclusive 
+ */
+void sendReadData(interconnect_t* interconnect, int destId, unsigned long address, bool exclusive) {
+    // Create a READ_ACKNOWLEDGE message
+    message_t readDataMsg = {
+        .type = READ_ACKNOWLEDGE,
+        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .destId = destId,
+        .address = address
+    };
+
+    // Enqueue the message to the outgoing queue
+    enqueue(interconnect->outgoingQueue, &readDataMsg);
+}
+
+/**
+ * @brief Facilitates fetching data from a cache node in response to a cache miss in another node. 
+ * 
+ * On encountering a cache miss, this function is used to create and send a FETCH message 
+ * through the interconnect system to the cache node that currently holds the required data. 
+ * This ensures efficient data retrieval and consistency across the distributed cache system.
+ * 
+ * @param interconnect 
+ * @param destId 
+ * @param address 
+ */
+void sendFetch(interconnect_t* interconnect, int destId, unsigned long address) {
+    // Create a FETCH message
+    message_t fetchMsg = {
+        .type = FETCH,
+        .sourceId = -1, // -1 or a specific ID if the directory has an ID
+        .destId = destId,
+        .address = address
+    };
+
+    // Enqueue the message to the outgoing queue
+    enqueue(interconnect->outgoingQueue, &fetchMsg);
 }
