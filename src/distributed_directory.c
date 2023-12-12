@@ -32,7 +32,7 @@ void processTraceLine(int processorId, char operation, unsigned long address) {
             msg.sourceId = processorId;
             msg.destId = localNodeIndex;
             msg.address = address;
-            enqueue(interconnect->incomingQueue, &msg);
+            enqueue(interconnect->incomingQueue, msg.type, msg.sourceId, msg.destId, msg.address);
             processMessageQueue();
             break;
         case 'W':
@@ -41,7 +41,7 @@ void processTraceLine(int processorId, char operation, unsigned long address) {
             msg.sourceId = processorId;
             msg.destId = localNodeIndex;
             msg.address = address;
-            enqueue(interconnect->incomingQueue, &msg);
+            enqueue(interconnect->incomingQueue, msg.type, msg.sourceId, msg.destId, msg.address);
             processMessageQueue();
             break;
         default:
@@ -83,6 +83,24 @@ int main(int argc, char *argv[]) {
     while (fscanf(traceFile, "%d %c %ld\n", &procId, &instr, &address) != EOF) {
         printf("%d %c %ld\n", procId, instr, address);
         processTraceLine(procId, instr, address);  
+        // print directories
+        for(int i = 0; i < NUM_PROCESSORS; i++) {
+            printf("\nnode %d\n", i);
+            directory_t* dir = interconnect->nodeList[i].directory;
+            for(int j = 0; j < NUM_LINES; j++) {
+                directory_entry_t entry = dir->lines[j];
+                if(entry.state != DIR_UNCACHED) {
+                    printf("dir line: %d state: %d, owner: %d\n", j, entry.state, entry.owner); 
+                    printf("exists in cache: ");
+                    for(int k = 0; k < NUM_PROCESSORS; k++) {
+                        printf("%d: %d ", k, entry.existsInCache[k]);
+                    }
+                }
+            }
+            printf("\n \nprocessor id: %d\n", i);
+            printCache(interconnect->nodeList[i].cache);
+        }
+
     }
 
     // Cleanup and close the file

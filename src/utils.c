@@ -88,7 +88,7 @@ int directoryIndex(unsigned long address) {
  */
 void sendInvalidate(int srcId, int destId, unsigned long address) {
     // Create an INVALIDATE message
-    message_t invalidateMsg = {
+    message_t msg = {
         .type = INVALIDATE,
         .sourceId = srcId, // -1 or a specific ID if the directory has an ID
         .destId = destId,
@@ -96,7 +96,8 @@ void sendInvalidate(int srcId, int destId, unsigned long address) {
     };
 
     // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, &invalidateMsg);
+    // printf("sendInvalidate to %d from %d with addr %lu\n", invalidateMsg.destId, invalidateMsg.sourceId, invalidateMsg.address);
+    enqueue(interconnect->outgoingQueue, msg.type, msg.sourceId, msg.destId, msg.address);
 }
 
 /**
@@ -270,6 +271,7 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
         for (int i = 0; i < NUM_PROCESSORS; i++) {
             if (i != cache_id) {
                 line->existsInCache[i] = false;
+                printf("\n spot 1: %lu", address);
                 sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
             }
         }
@@ -308,8 +310,37 @@ line_t* findLineInSet(set_t set, unsigned long tag) {
     for (unsigned int i = 0; i < set.associativity; ++i) {
         if (set.lines[i].tag == tag && set.lines[i].valid) {
             return &set.lines[i];
+            
         }
     }
+    printf("\n 333 \n");
     return NULL;  // Line not found
 }
 
+
+/**
+ * @brief Displays the structure and contents of a cache for debugging.
+ * 
+ * @param cache The cache to be printed.
+ */
+void printCache(cache_t *cache) {
+    if (cache == NULL) {
+        printf("Cache is NULL\n");
+        return;
+    }
+
+    printf("Cache Structure (Processor ID: %d)\n", cache->processor_id);
+    printf("Total Sets: %lu, Lines per Set: %lu, Block Size: %lu\n", 
+           (1UL << cache->S), cache->E, (1UL << cache->B));
+    printf("Hit Count: %lu, Miss Count: %lu, Eviction Count: %lu, Dirty Eviction Count: %lu\n", 
+           cache->hitCount, cache->missCount, cache->evictionCount, cache->dirtyEvictionCount);
+
+    for (unsigned long i = 0; i < (1UL << cache->S); i++) {
+        printf("Set %lu:\n", i);
+        for (unsigned long j = 0; j < cache->E; j++) {
+            line_t *line = &cache->setList[i].lines[j];
+            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d, Last Used: %lu\n", 
+                   j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed);
+        }
+    }
+}

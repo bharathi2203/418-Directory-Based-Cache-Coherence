@@ -45,9 +45,6 @@ int findCacheWithLine(unsigned long address) {
     return -1;
 }
 
-
-
-
 /**
  * @brief Handles read requests by checking cache hit/miss and updating state as needed.
  * 
@@ -76,7 +73,9 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
                 stateChangeMsg.address = address; // Address of the cache line
 
                 // Enqueue the message to the outgoing queue
-                enqueue(interconnect->outgoingQueue, &stateChangeMsg);
+                enqueue(interconnect->outgoingQueue, stateChangeMsg.type, stateChangeMsg.sourceId, 
+                        stateChangeMsg.destId, stateChangeMsg.address);
+                
             }
         }
         // Respond with data
@@ -92,6 +91,7 @@ void processReadRequest(cache_t *cache, int sourceId, unsigned long address) {
 static void sendInvalidateToOthers(int sourceId, unsigned long address) {
     for(int i = 0; i < NUM_PROCESSORS; i++) {
         if(i != sourceId) {
+            printf("\n spot 2: %lu", address);
             sendInvalidate(sourceId, i, address);
         }
     }
@@ -153,7 +153,7 @@ void sendReadResponse(int destId, unsigned long address) {
     // readResponse.data = data; // Include data if needed
 
     // Enqueue the message to the outgoing queue
-    enqueue(interconnect->outgoingQueue, &readResponse);
+    enqueue(interconnect->outgoingQueue, readResponse.type, readResponse.sourceId, readResponse.destId, readResponse.address);
 }
 
 
@@ -176,7 +176,8 @@ void notifyStateChangeToShared(int cacheId, unsigned long address) {
             stateChangeMsg.address = address;
 
             // Enqueue the state update message to the outgoing queue
-            enqueue(interconnect->outgoingQueue, &stateChangeMsg);
+            enqueue(interconnect->outgoingQueue, stateChangeMsg.type, stateChangeMsg.sourceId, 
+                    stateChangeMsg.destId, stateChangeMsg.address);
         }
     }
 }
@@ -259,7 +260,7 @@ void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address) {
             fetchMsg.sourceId = cache->processor_id;
             fetchMsg.destId = cacheIdWithData;
             fetchMsg.address = address;
-            enqueue(interconnect->outgoingQueue, &fetchMsg);
+            enqueue(interconnect->outgoingQueue, fetchMsg.type, fetchMsg.sourceId, fetchMsg.destId, fetchMsg.address);
         } else {
             // Data is not in any cache, fetch from directory
             message_t readRequest;
@@ -267,38 +268,12 @@ void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address) {
             readRequest.sourceId = cache->processor_id;
             readRequest.destId = address / NUM_PROCESSORS;
             readRequest.address = address;
-            enqueue(interconnect->outgoingQueue, &readRequest);
+            enqueue(interconnect->outgoingQueue, readRequest.type, readRequest.sourceId, readRequest.destId, readRequest.address);
         }
     }
 }
 
 
-/**
- * @brief Displays the structure and contents of a cache for debugging.
- * 
- * @param cache The cache to be printed.
- */
-void printCache(cache_t *cache) {
-    if (cache == NULL) {
-        printf("Cache is NULL\n");
-        return;
-    }
-
-    printf("Cache Structure (Processor ID: %d)\n", cache->processor_id);
-    printf("Total Sets: %lu, Lines per Set: %lu, Block Size: %lu\n", 
-           (1UL << cache->S), cache->E, (1UL << cache->B));
-    printf("Hit Count: %lu, Miss Count: %lu, Eviction Count: %lu, Dirty Eviction Count: %lu\n", 
-           cache->hitCount, cache->missCount, cache->evictionCount, cache->dirtyEvictionCount);
-
-    for (unsigned long i = 0; i < (1UL << cache->S); i++) {
-        printf("Set %lu:\n", i);
-        for (unsigned long j = 0; j < cache->E; j++) {
-            line_t *line = &cache->setList[i].lines[j];
-            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d, Last Used: %lu\n", 
-                   j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed);
-        }
-    }
-}
 
 
 

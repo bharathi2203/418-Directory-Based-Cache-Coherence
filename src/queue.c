@@ -24,27 +24,20 @@ Queue* createQueue() {
  * @param data 
  */
 
-typedef enum {
-    READ_REQUEST,       // Cache to Memory
-    READ_ACKNOWLEDGE,   // Memory to Cache
-    INVALIDATE,         // Memory to Cache
-    INVALIDATE_ACK,     // Cache to Memory
-    STATE_UPDATE,       // Cache to Cache 
-    WRITE_REQUEST,      // Cache to Memory
-    WRITE_ACKNOWLEDGE,  // Memory to Cache
-    FETCH               // unsure if it need it, maybe removed it earlier?
-} message_type;
+void printQueue(Queue* q) {
+    QueueNode* temp = q->front;
+    int i = 0;
 
- typedef struct {
-    message_type type;
-    int sourceId;
-    int destId;
-    unsigned long address;
-} message_t;
+    while (temp != NULL) {
+        message_t *m = (temp->data);
+        printf("\n [#%d] Type: %d, srcID: %d, destId: %d, address: %lu\n", i, m->type, m->sourceId, m->destId, m->address);
+        temp = temp->next;
+        i += 1;
+    }
+}
 
 
-
-void enqueue(Queue* q, void* data) {
+void enqueue(Queue* q, message_type type, int sourceId, int destId, unsigned long address) {
     if (q == NULL) {
         return;
     }
@@ -54,7 +47,12 @@ void enqueue(Queue* q, void* data) {
         return;
     }
 
-    newNode->data = data;
+    newNode->data = (message_t*)malloc(sizeof(message_t));
+    newNode->data->type = type;
+    newNode->data->sourceId = sourceId;
+    newNode->data->destId = destId;
+    newNode->data->address = address;
+
     newNode->next = NULL;
 
     if (q->rear == NULL) {
@@ -65,8 +63,8 @@ void enqueue(Queue* q, void* data) {
     }
 
     q->size++;
-    message_t* m = (message_t*)(data);
-    printf("\nEQ: type: %d, srcID: %d, destId: %d, address: %lu\n", m->type, m->sourceId, m->destId, m->address);
+    
+    // printf("\nEQ: type: %d, srcID: %d, destId: %d, address: %lu\n", m->type, m->sourceId, m->destId, m->address);
 }
 
 /**
@@ -75,13 +73,13 @@ void enqueue(Queue* q, void* data) {
  * @param q 
  * @return void* 
  */
-void* dequeue(Queue* q) {
+message_t* dequeue(Queue* q) {
     if (q == NULL || q->front == NULL) {
         return NULL;
     }
 
     QueueNode* temp = q->front;
-    void* data = temp->data;
+    message_t* data = temp->data;
 
     q->front = q->front->next;
     if (q->front == NULL) {
@@ -90,8 +88,8 @@ void* dequeue(Queue* q) {
 
     free(temp);
     q->size--;
-    message_t* m = (message_t*)(data);
-    printf("\n DQ:type: %d, srcID: %d, destId: %d, address: %lu\n", m->type, m->sourceId, m->destId, m->address);
+    
+    // printf("\n DQ:type: %d, srcID: %d, destId: %d, address: %lu\n", m->type, m->sourceId, m->destId, m->address);
     return data;
 }
 
