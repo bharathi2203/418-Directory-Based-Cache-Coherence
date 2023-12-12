@@ -16,9 +16,9 @@
 #define NUM_PROCESSORS 4  
 #define NUM_LINES 256
 
-#define main_S 1
-#define main_E 16
-#define main_B 16
+#define main_S 2
+#define main_E 4
+#define main_B 1
 
 /** @brief Number of clock cycles for hit */
 #define HIT_CYCLES 4
@@ -126,24 +126,6 @@ The `message_type` enum defines different types of messages used for communicati
         Memory's response to a WRITE_REQUEST, confirming the write operation.
 
 */
-typedef enum {
-    READ_REQUEST,       // Cache to Memory
-    READ_ACKNOWLEDGE,   // Memory to Cache
-    INVALIDATE,         // Memory to Cache
-    INVALIDATE_ACK,     // Cache to Memory
-    STATE_UPDATE,       // Cache to Cache 
-    WRITE_REQUEST,      // Cache to Memory
-    WRITE_ACKNOWLEDGE,  // Memory to Cache
-
-    FETCH               // unsure if it need it, maybe removed it earlier?
-} message_type;
-
-typedef struct {
-    message_type type;
-    int sourceId;
-    int destId;
-    unsigned long address;
-} message_t;
 
 typedef struct node {
     directory_t *directory;
@@ -177,5 +159,6 @@ line_t* findLineInSet(set_t set, unsigned long tag);
 void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state);
 void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState);
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
+void printCache(cache_t *cache);
 
 #endif // DATA_DEF_H
