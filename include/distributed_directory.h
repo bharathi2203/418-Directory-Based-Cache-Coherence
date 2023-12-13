@@ -10,6 +10,7 @@
 // Function declarations for directory
 void updateLineUsage(line_t *line);
 void processTraceLine(int processorId, char instr, unsigned long address);
+void print_interconnect_stats(void); 
 
 // Function declarations for benchmarking / testing 
 // void displayUsage(void);

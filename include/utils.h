@@ -38,6 +38,21 @@ typedef struct {
     unsigned long dirtyEvictions;
 } csim_stats_t;
 
+
+typedef struct {
+    // unsigned long totalInterconnectTraffic;
+    unsigned long totalMemReads;
+
+    unsigned long totalReadRequests;
+    unsigned long totalWriteRequests;
+    unsigned long totalInvalidations;
+    unsigned long totalStateUpdates;
+    unsigned long totalReadAcks;
+    unsigned long totalWriteAcks;
+    unsigned long totalFetchRequests;
+} interconnect_stats_t;
+
+
 /**
  * @brief The state that a given block can be in.
  * 
@@ -145,6 +160,7 @@ typedef struct interconnect {
 extern interconnect_t *interconnect;
 extern csim_stats_t *system_stats;
 extern int timer;
+extern interconnect_stats_t *interconnect_stats; 
 
 void updateLineUsage(line_t *line);
 int directoryIndex(unsigned long address);
@@ -161,5 +177,6 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
 void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState);
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
 void printCache(cache_t *cache);
+csim_stats_t *makeSummary(cache_t *cache);
 
 #endif // DATA_DEF_H

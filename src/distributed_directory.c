@@ -12,7 +12,7 @@
 interconnect_t *interconnect = NULL;
 csim_stats_t *system_stats = NULL;
 int timer = 0;
-
+interconnect_stats_t *interconnect_stats = NULL;
 
 /**
  * @brief Parse a line from the trace file and perform the corresponding operation
@@ -50,6 +50,17 @@ void processTraceLine(int processorId, char operation, unsigned long address) {
     }
 }
 
+void print_interconnect_stats() {
+    printf("\nInterconnect_stats: \n");
+    printf("\ninterconnect_stats->totalMemReads: %d", interconnect_stats->totalMemReads);
+    printf("\ninterconnect_stats->totalReadRequests: %d", interconnect_stats->totalReadRequests);
+    printf("\ninterconnect_stats->totalWriteRequests: %d", interconnect_stats->totalWriteRequests);
+    printf("\ninterconnect_stats->totalInvalidations: %d", interconnect_stats->totalInvalidations);
+    printf("\ninterconnect_stats->totalStateUpdates: %d", interconnect_stats->totalStateUpdates);
+    printf("\ninterconnect_stats->totalReadAcks: %d", interconnect_stats->totalReadAcks);
+    printf("\ninterconnect_stats->totalWriteAcks: %d ", interconnect_stats->totalWriteAcks);
+    printf("\ninterconnect_stats->totalFetchRequests: %d", interconnect_stats->totalFetchRequests);
+} 
 
 /**
  * @brief 
@@ -68,6 +79,17 @@ int main(int argc, char *argv[]) {
     // Initialize the system
     interconnect = createInterconnect(NUM_LINES, main_S, main_E, main_B);
 
+    // Initialize stats struct 
+    interconnect_stats = malloc(sizeof(interconnect_stats_t));
+    interconnect_stats->totalMemReads = 0;
+    interconnect_stats->totalReadRequests = 0;
+    interconnect_stats->totalWriteRequests = 0;
+    interconnect_stats->totalInvalidations = 0;
+    interconnect_stats->totalStateUpdates = 0;
+    interconnect_stats->totalReadAcks = 0;
+    interconnect_stats->totalWriteAcks = 0;
+    interconnect_stats->totalFetchRequests = 0;
+
     timer = 0;
 
     // Open the trace file
@@ -82,11 +104,14 @@ int main(int argc, char *argv[]) {
     unsigned long address = 0;
     char instr = '\0';
 
-    while (fscanf(traceFile, "%d %c %ld\n", &procId, &instr, &address) != EOF) {
-        printf("%d %c %ld\n", procId, instr, address);
+    while (fscanf(traceFile, "%d %c %lx\n", &procId, &instr, &address) != EOF) {
+        printf("%d %c %lx\n", procId, instr, address);
         processTraceLine(procId, instr, address);  
         // print directories
-        for(int i = 0; i < NUM_PROCESSORS; i++) {
+        
+    }
+
+    for(int i = 0; i < NUM_PROCESSORS; i++) {
             printf("\nnode %d\n", i);
             directory_t* dir = interconnect->nodeList[i].directory;
             for(int j = 0; j < NUM_LINES; j++) {
@@ -102,9 +127,9 @@ int main(int argc, char *argv[]) {
             }
             printf("\n \nprocessor id: %d\n", i);
             printCache(interconnect->nodeList[i].cache);
-        }
+            makeSummary(interconnect->nodeList[i].cache);
     }
-
+    print_interconnect_stats();
     // Cleanup and close the file
     fclose(traceFile);
 

@@ -274,33 +274,3 @@ void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address) {
 }
 
 
-
-
-
-/**
- * @brief Generates a summary of cache performance statistics.
- * 
- * @param cache 
-*/
-csim_stats_t *makeSummary(cache_t *cache) {
-    if (cache == NULL) {
-        printf("Cache is NULL\n");
-        return NULL;
-    }
-
-    csim_stats_t *stats = malloc(sizeof(csim_stats_t));
-    if (stats == NULL) {
-        printf("Failed to allocate memory for cache stats\n");
-        return NULL;
-    }
-
-    stats->hits = cache->hitCount;
-    stats->misses = cache->missCount;
-    stats->evictions = cache->evictionCount;
-    stats->dirtyBytes = 0; // Assuming you have a way to calculate this
-    stats->dirtyEvictions = cache->dirtyEvictionCount;
-
-    return stats;
-}
-
-

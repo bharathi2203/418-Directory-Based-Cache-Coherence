@@ -21,6 +21,8 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
     line_t *oldestLine = NULL;
     unsigned long oldestTime = ULONG_MAX;
 
+    interconnect_stats->totalMemReads++;
+
     // Look for an empty line or the least recently used line
     for (unsigned int i = 0; i < set->associativity; ++i) {
         line_t *line = &set->lines[i];
@@ -36,7 +38,7 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
     }
 
     // Evict the oldest line if necessary
-    if (oldestLine->valid && oldestLine->isDirty) {
+    if (oldestLine->valid) {
         // Write back to memory if dirty
         cache->evictionCount++;
         if (oldestLine->isDirty) {
@@ -271,9 +273,8 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
     // Invalidate other caches if necessary
     if (newState == DIR_EXCLUSIVE_MODIFIED) {
         for (int i = 0; i < NUM_PROCESSORS; i++) {
-            if (i != cache_id) {
+            if (i != cache_id && line->existsInCache[i]) {
                 line->existsInCache[i] = false;
-                printf("\n spot 1: %lu", address);
                 sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
             }
         }
@@ -314,7 +315,6 @@ line_t* findLineInSet(set_t set, unsigned long tag) {
             return &set.lines[i];
         }
     }
-    printf("\n 333 \n");
     return NULL;  // Line not found
 }
 
@@ -345,3 +345,38 @@ void printCache(cache_t *cache) {
         }
     }
 }
+
+
+
+
+
+/**
+ * @brief Generates a summary of cache performance statistics.
+ * 
+ * @param cache 
+*/
+csim_stats_t *makeSummary(cache_t *cache) {
+    if (cache == NULL) {
+        printf("Cache is NULL\n");
+        return NULL;
+    }
+
+    csim_stats_t *stats = malloc(sizeof(csim_stats_t));
+    if (stats == NULL) {
+        printf("Failed to allocate memory for cache stats\n");
+        return NULL;
+    }
+
+    stats->hits = cache->hitCount;
+    printf("\nHits: %d", cache->hitCount);
+    stats->misses = cache->missCount;
+    printf("\nMiss: %d", cache->missCount);
+    stats->evictions = cache->evictionCount;
+    printf("\nEvictions: %d", cache->evictionCount);
+    stats->dirtyEvictions = cache->dirtyEvictionCount;
+    printf("\nDirty Evictions: %d \n ", cache->dirtyEvictionCount);
+
+    return stats;
+}
+
+

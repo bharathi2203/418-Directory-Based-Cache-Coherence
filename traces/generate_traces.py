@@ -24,7 +24,7 @@ import random
 #   Random Access Pattern 
 ########################################################################
 
-def generate_random_access_tracefile(n, mem_size, accesses, filename="random_tracefile.txt"):
+def generate_random_access_tracefile(n, mem_size, accesses, filename="test1.trace"):
     """
     Generate a tracefile simulating random memory access.
 
@@ -36,9 +36,9 @@ def generate_random_access_tracefile(n, mem_size, accesses, filename="random_tra
     with open(filename, "w") as file:
         for _ in range(accesses):
             proc = random.randint(0, n - 1)
-            address = random.randint(0, mem_size - 1) * 8  # Assuming each element is 8 bytes
+            address = random.randint(0, mem_size - 1) 
             operation = random.choice(["R", "W"])  # Randomly choose Read or Write
-            file.write(f"{proc}, {operation}, {address:016x}\n")
+            file.write(f"{proc} {operation} {address:04x}\n")
 
     print(f"Random access tracefile '{filename}' generated for {n} processors.")
 
@@ -229,4 +229,5 @@ def generate_matrix_transpose_trace(m, n, filename="matrix_transpose_trace.txt")
 ########################################################################
 
 # generate_random_access_tracefile(4, 1000, 500)
+generate_random_access_tracefile(4, 1000, 50)
 
