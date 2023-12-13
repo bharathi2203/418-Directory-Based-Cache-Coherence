@@ -49,7 +49,7 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
     oldestLine->valid = true;
     oldestLine->isDirty = (state == MODIFIED);
     oldestLine->state = state;
-    oldestLine->lastUsed = getCurrentTime(); 
+    oldestLine->lastUsed = timer; 
 }
 
 
@@ -60,7 +60,8 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
  * @param line 
  */
 void updateLineUsage(line_t *line) {
-    line->lastUsed = getCurrentTime(); 
+    printf("timer: %d\n", timer);
+    line->lastUsed = timer; 
 }
 
 /**
@@ -213,6 +214,7 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
             cache->setList[i].lines[j].isDirty = false;
             cache->setList[i].lines[j].state = INVALID;
             cache->setList[i].lines[j].lastUsed = 0;
+
         }
     }
 
@@ -293,7 +295,7 @@ void invalidateCacheLine(cache_t *cache, unsigned long address) {
         line_t *line = &cache->setList[setIndex].lines[i];
         if (line->tag == tag && line->valid) {
             // Simply invalidate the line without handling dirty data
-            line->valid = false;
+            // line->valid = false;
             line->state = INVALID;
         }
     }
@@ -310,7 +312,6 @@ line_t* findLineInSet(set_t set, unsigned long tag) {
     for (unsigned int i = 0; i < set.associativity; ++i) {
         if (set.lines[i].tag == tag && set.lines[i].valid) {
             return &set.lines[i];
-            
         }
     }
     printf("\n 333 \n");

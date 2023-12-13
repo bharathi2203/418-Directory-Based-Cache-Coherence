@@ -13,7 +13,7 @@
 #include <string.h>
 #include <limits.h>
 
-#define NUM_PROCESSORS 4  
+#define NUM_PROCESSORS 4
 #define NUM_LINES 256
 
 #define main_S 2
@@ -144,6 +144,7 @@ typedef struct interconnect {
  */
 extern interconnect_t *interconnect;
 extern csim_stats_t *system_stats;
+extern int timer;
 
 void updateLineUsage(line_t *line);
 int directoryIndex(unsigned long address);

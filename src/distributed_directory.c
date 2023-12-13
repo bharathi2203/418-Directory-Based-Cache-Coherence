@@ -11,7 +11,7 @@
  */
 interconnect_t *interconnect = NULL;
 csim_stats_t *system_stats = NULL;
-
+int timer = 0;
 
 
 /**
@@ -68,6 +68,8 @@ int main(int argc, char *argv[]) {
     // Initialize the system
     interconnect = createInterconnect(NUM_LINES, main_S, main_E, main_B);
 
+    timer = 0;
+
     // Open the trace file
     FILE *traceFile = fopen(argv[1], "r");
     if (traceFile == NULL) {
@@ -95,12 +97,12 @@ int main(int argc, char *argv[]) {
                     for(int k = 0; k < NUM_PROCESSORS; k++) {
                         printf("%d: %d ", k, entry.existsInCache[k]);
                     }
+                    printf("\n");
                 }
             }
             printf("\n \nprocessor id: %d\n", i);
             printCache(interconnect->nodeList[i].cache);
         }
-
     }
 
     // Cleanup and close the file
