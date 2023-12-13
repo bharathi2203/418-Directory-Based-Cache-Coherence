@@ -199,7 +199,9 @@ void handleReadRequest(message_t msg) {
         // If the line is uncached or already shared, simply update presence bits
         if (entry->state == DIR_UNCACHED || entry->state == DIR_SHARED) {
             entry->state = DIR_SHARED;
-            entry->existsInCache[msg.sourceId] = true;
+
+            // entry->existsInCache[msg.sourceId] = true;
+            addProcToDirEntry(entry, msg.sourceId, msg.address);
 
         } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
             // The line is currently exclusively modified in one cache.
@@ -208,8 +210,10 @@ void handleReadRequest(message_t msg) {
 
             // Update the directory to shared state
             entry->state = DIR_SHARED;
-            entry->existsInCache[entry->owner] = true; // The owner still has it in shared state now
-            entry->existsInCache[msg.sourceId] = true; // The requester will have it in shared state
+            addProcToDirEntry(entry, entry->owner, msg.address);
+            addProcToDirEntry(entry, msg.sourceId, msg.address);
+            // entry->existsInCache[entry->owner] = true; // The owner still has it in shared state now
+            // entry->existsInCache[msg.sourceId] = true; // The requester will have it in shared state
             entry->owner = -1; // No single owner anymore
         }
 
@@ -271,18 +275,20 @@ void handleWriteRequest(message_t msg) {
         // Update the directory entry for the write request
         if (entry->state != DIR_UNCACHED) {
             // Invalidate other caches if necessary
-            for (int i = 0; i < NUM_PROCESSORS; i++) {
-                if (i != msg.sourceId && entry->existsInCache[i]) {
+            for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+                if (entry->existsInCache[i] != msg.sourceId && entry->existsInCache[i] != -1) {
                     // Invalidate other caches
-                    sendInvalidate(msg.sourceId, i, msg.address);
-                    entry->existsInCache[i] = false;
+                    sendInvalidate(msg.sourceId, entry->existsInCache[i], msg.address);
+                    removeProcFromDirEntry(entry, entry->existsInCache[i]);
+                    // entry->existsInCache[i] = false;
                 }
             }
         }
         // Update the directory to exclusive modified state
         entry->state = DIR_EXCLUSIVE_MODIFIED;
         entry->owner = msg.sourceId;
-        entry->existsInCache[msg.sourceId] = true;
+        // entry->existsInCache[msg.sourceId] = true;
+        addProcToDirEntry(entry, msg.sourceId, msg.address);
 
         // Cache Updates 
         cache_t *cache = interconnect->nodeList[msg.sourceId].cache;
@@ -455,7 +461,8 @@ void updateDirectoryState(directory_t* directory, unsigned long address, directo
     if (newState == DIR_UNCACHED) {
         line->owner = -1;
         for (int i = 0; i < NUM_PROCESSORS; i++) {
-            line->existsInCache[i] = false;
+            // line->existsInCache[i] = false;
+            removeProcFromDirEntry(line, i);
         }
     }
 }
@@ -644,7 +651,8 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
     line->state = DIR_SHARED;
     line->owner = -1; // TODO: should the owner be the newest sharer? 
     
-    line->existsInCache[requestingProcessorId] = true;
+    // line->existsInCache[requestingProcessorId] = true;
+    addProcToDirEntry(line, requestingProcessorId, address);
 }
 
 /**

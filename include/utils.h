@@ -26,6 +26,7 @@
 /** @brief Number of clock cycles for miss */
 #define MISS_CYCLES 100
 
+#define LIM_PTR_DIR_ENTRIES 2
 /**
  * @brief 
  * 
@@ -113,7 +114,7 @@ typedef enum {
 // Directory entry for each block in the main memory
 typedef struct {
     directory_state state;
-    bool existsInCache[NUM_PROCESSORS]; // Presence bits for each cache
+    int existsInCache[LIM_PTR_DIR_ENTRIES]; // Presence bits for each cache
     int owner; // Owner of the line if in exclusive/modified state
 } directory_entry_t;
 
@@ -178,5 +179,7 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
 void printCache(cache_t *cache);
 csim_stats_t *makeSummary(cache_t *cache);
-
+bool lineInProcCache(directory_entry_t* entry, int procId);
+void addProcToDirEntry(directory_entry_t* entry, int procId, unsigned long address);
+void removeProcFromDirEntry(directory_entry_t* entry, int procId);
 #endif // DATA_DEF_H

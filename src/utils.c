@@ -151,7 +151,7 @@ directory_t* initializeDirectory(int numLines) {
     // Initialize each line in the directory
     for (int i = 0; i < numLines; i++) {
         dir->lines[i].state = DIR_UNCACHED;
-        memset(dir->lines[i].existsInCache, false, sizeof(bool) * NUM_PROCESSORS);
+        memset(dir->lines[i].existsInCache, -1, sizeof(int) * LIM_PTR_DIR_ENTRIES);
         dir->lines[i].owner = -1;
     }
     return dir;
@@ -272,9 +272,9 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
 
     // Invalidate other caches if necessary
     if (newState == DIR_EXCLUSIVE_MODIFIED) {
-        for (int i = 0; i < NUM_PROCESSORS; i++) {
-            if (i != cache_id && line->existsInCache[i]) {
-                line->existsInCache[i] = false;
+        for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+            if (line->existsInCache[i] != cache_id && line->existsInCache[i] != -1) {
+                removeProcFromDirEntry(line, i);
                 sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
             }
         }
@@ -379,4 +379,44 @@ csim_stats_t *makeSummary(cache_t *cache) {
     return stats;
 }
 
+
+bool lineInProcCache(directory_entry_t* entry, int procId) {
+    for(int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+        if(entry->existsInCache[i] == procId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void addProcToDirEntry(directory_entry_t* entry, int procId, unsigned long address) {
+    for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+        if (entry->existsInCache[i] == -1) {
+            entry->existsInCache[i] = procId;
+            return;
+        }
+    }
+    int evictedEntry = entry->existsInCache[0];
+    entry->existsInCache[0] = procId; 
+    cache_t* cache = interconnect->nodeList[evictedEntry].cache;
+    int setIndex = calculateSetIndex(address, cache->S, cache->B);
+    int tag = calculateTag(address, cache->S, cache->B);
+    line_t *oldestLine = findLineInSet(cache->setList[setIndex], tag);
+    
+    // evict from cache
+    oldestLine->tag = 0;
+    oldestLine->valid = false;
+    oldestLine->isDirty = 0;
+    oldestLine->state = INVALID;
+    oldestLine->lastUsed = 0; 
+}
+
+void removeProcFromDirEntry(directory_entry_t* entry, int procId) {
+    for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+        if (entry->existsInCache[i] == procId) {
+            entry->existsInCache[i] = -1;
+            return;
+        }
+    }
+}
 

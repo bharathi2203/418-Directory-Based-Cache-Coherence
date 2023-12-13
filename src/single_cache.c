@@ -35,7 +35,7 @@ int findCacheWithLine(unsigned long address) {
     // or -1 to indicate it can be fetched from memory.
     if (directoryLine->state == DIR_SHARED) {
         for (int i = 0; i < NUM_PROCESSORS; i++) {
-            if (directoryLine->existsInCache[i]) {
+            if (lineInProcCache(directoryLine,i)) {
                 return i; // Return the ID of the first cache found with the line.
             }
         }

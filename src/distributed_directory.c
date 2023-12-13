@@ -119,8 +119,8 @@ int main(int argc, char *argv[]) {
                 if(entry.state != DIR_UNCACHED) {
                     printf("dir line: %d state: %d, owner: %d\n", j, entry.state, entry.owner); 
                     printf("exists in cache: ");
-                    for(int k = 0; k < NUM_PROCESSORS; k++) {
-                        printf("%d: %d ", k, entry.existsInCache[k]);
+                    for(int k = 0; k < LIM_PTR_DIR_ENTRIES; k++) {
+                        printf("%d ", entry.existsInCache[k]);
                     }
                     printf("\n");
                 }
