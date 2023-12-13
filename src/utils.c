@@ -73,7 +73,7 @@ void updateLineUsage(line_t *line) {
  * @return int 
  */
 int directoryIndex(unsigned long address) {
-   return address % NUM_LINES;
+   return (address >> main_B) % NUM_LINES;
 }
 
 
