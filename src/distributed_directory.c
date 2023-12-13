@@ -115,14 +115,15 @@ int main(int argc, char *argv[]) {
             printf("\nnode %d\n", i);
             directory_t* dir = interconnect->nodeList[i].directory;
             for(int j = 0; j < NUM_LINES; j++) {
+                
                 directory_entry_t entry = dir->lines[j];
                 if(entry.state != DIR_UNCACHED) {
-                    printf("dir line: %d state: %d, owner: %d\n", j, entry.state, entry.owner); 
-                    printf("exists in cache: ");
-                    for(int k = 0; k < NUM_PROCESSORS; k++) {
-                        printf("%d: %d ", k, entry.existsInCache[k]);
+                    printf("\ndirectory entry with owner: %d, state: %d\n", entry.owner, entry.state);
+                    line_t* temp = entry.head;
+                    while(temp != NULL) {
+                        printf("cache line: %p, cacheLine->processor_id: %d\n", temp, temp->processor_id);
+                        temp = temp->next;
                     }
-                    printf("\n");
                 }
             }
             printf("\n \nprocessor id: %d\n", i);

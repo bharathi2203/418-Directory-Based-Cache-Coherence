@@ -14,11 +14,13 @@
 #include <limits.h>
 
 #define NUM_PROCESSORS 4
-#define NUM_LINES 256
+#define NUM_LINES 256 // number of memory lines 
 
-#define main_S 2
+#define main_S 2 // 2^2
 #define main_E 4
 #define main_B 1
+
+#define NUM_DIR_ENTRIES main_E * (1 << main_S) // equal to # lines in cache
 
 /** @brief Number of clock cycles for hit */
 #define HIT_CYCLES 4
@@ -69,8 +71,10 @@ typedef struct line {
     unsigned long tag;          // Represents tag bits
     bool valid;                 // Represents valid bit
     bool isDirty;               // Represents dirty bit for each cache line
-    block_state state;       // State of the cache line (MESI)
+    block_state state;          // State of the cache line (MESI)
     unsigned long lastUsed;     // LRU counter for the line
+    int processor_id;
+    struct line* next;
 } line_t;
 
 /**
@@ -112,8 +116,9 @@ typedef enum {
 
 // Directory entry for each block in the main memory
 typedef struct {
+    unsigned long tag;
     directory_state state;
-    bool existsInCache[NUM_PROCESSORS]; // Presence bits for each cache
+    line_t* head; // Presence bits for each cache
     int owner; // Owner of the line if in exclusive/modified state
 } directory_entry_t;
 
@@ -173,10 +178,10 @@ void freeDirectory(directory_t* dir);
 void freeCache(cache_t *cache);
 void invalidateCacheLine(cache_t *cache, unsigned long address);
 line_t* findLineInSet(set_t set, unsigned long tag);
-void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state);
+line_t* addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state);
 void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState);
 unsigned long calculateSetIndex(unsigned long address, unsigned long S, unsigned long B);
 void printCache(cache_t *cache);
 csim_stats_t *makeSummary(cache_t *cache);
-
+directory_entry_t* findDirectoryEntryFromIndex(directory_t* dir, int dirIndex);
 #endif // DATA_DEF_H

@@ -189,56 +189,48 @@ void processMessageQueue() {
  * @param msg 
  */
 void handleReadRequest(message_t msg) {
+    // Cache Updates 
+    unsigned long address = msg.address;
+    int index = directoryIndex(address);
+    cache_t* cache = interconnect->nodeList[msg.destId].cache;        
+    int setIndex = calculateSetIndex(address, cache->S, cache->B);
+    set_t *set = &cache->setList[setIndex];
+
+    // printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu\n", msg.sourceId, msg.destId, msg.address);
+    // printCache(cache);
+    line_t *line = findLineInSet(*set, calculateTag(address, cache->S, cache->B));
+    // printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu\n", msg.sourceId, msg.destId, msg.address);
+
+    if (line != NULL && line->valid && line->tag ==  calculateTag(address, cache->S, cache->B)) {
+        // Cache hit
+        printf("Cache HIT: Processor %d reading address %lu\n", cache->processor_id, address);
+        cache->hitCount++;
+        updateLineUsage(line);  // Update line usage on hit
+    } else {
+        // Cache miss
+        // printf("here\n");
+        printf("Cache MISS: Processor %d reading address %lu\n", cache->processor_id, address);
+        cache->missCount++;
+        // fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
+        line = addLineToCacheSet(cache, set, address, EXCLUSIVE);
+    }
+
+    printf("address %lu on this node %d\n", msg.address, msg.destId);
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
-    int index = directoryIndex(msg.address);
-    directory_entry_t* entry = &dir->lines[index];
+    int dirIndex = directoryIndex(msg.address);
+    directory_entry_t* entry = findDirectoryEntryFromIndex(dir, dirIndex);
     // printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu\n", msg.sourceId, msg.destId, msg.address);
     if(msg.destId == msg.sourceId) {
-        cache_t* cache = interconnect->nodeList[msg.destId].cache;
-        // printf("address %lu on this node %d\n", msg.address, msg.destId);
         // If the line is uncached or already shared, simply update presence bits
         if (entry->state == DIR_UNCACHED || entry->state == DIR_SHARED) {
             entry->state = DIR_SHARED;
-            entry->existsInCache[msg.sourceId] = true;
-
         } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
             // The line is currently exclusively modified in one cache.
-            // We need to downgrade it to shared and send it to the requesting cache.        
-            // sendDowngrade(interconnect, entry->owner, msg.address);
 
             // Update the directory to shared state
             entry->state = DIR_SHARED;
-            entry->existsInCache[entry->owner] = true; // The owner still has it in shared state now
-            entry->existsInCache[msg.sourceId] = true; // The requester will have it in shared state
             entry->owner = -1; // No single owner anymore
         }
-
-
-        // Cache Updates 
-        unsigned long address = msg.address;
-        int index = directoryIndex(address);
-        int setIndex = calculateSetIndex(address, cache->S, cache->B);
-        set_t *set = &cache->setList[setIndex];
-
-        // printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu\n", msg.sourceId, msg.destId, msg.address);
-        // printCache(cache);
-        line_t *line = findLineInSet(*set, calculateTag(address, cache->S, cache->B));
-        // printf("msg.sourceId: %d, msg.destId: %d, msg.address: %lu\n", msg.sourceId, msg.destId, msg.address);
-
-        if (line != NULL && line->valid && line->tag ==  calculateTag(address, cache->S, cache->B)) {
-            // Cache hit
-            // printf("Cache HIT: Processor %d reading address %lu\n", cache->processor_id, address);
-            cache->hitCount++;
-            updateLineUsage(line);  // Update line usage on hit
-        } else {
-            // Cache miss
-            // printf("here\n");
-            // printf("Cache MISS: Processor %d reading address %lu\n", cache->processor_id, address);
-            cache->missCount++;
-            // fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
-            addLineToCacheSet(cache, set, address, EXCLUSIVE);
-        }
-
     }
     else {
         message_t Readmsg = {
@@ -262,6 +254,7 @@ void handleReadRequest(message_t msg) {
  */
  // TODO: what happens if 
 void handleWriteRequest(message_t msg) {
+    /*
     // Locate the directory for the destination node
     directory_t* dir = interconnect->nodeList[msg.destId].directory;
     int index = directoryIndex(msg.address);
@@ -319,7 +312,7 @@ void handleWriteRequest(message_t msg) {
         enqueue(interconnect->outgoingQueue, writeMsg.type, writeMsg.sourceId, writeMsg.destId, writeMsg.address);
 
     }
-    
+    */
 }
 
 /**
@@ -451,6 +444,8 @@ void updateDirectoryState(directory_t* directory, unsigned long address, directo
     // Update the state of the directory line
     line->state = newState;
 
+    /*
+
     // Reset owner and presence bits if the state is DIR_UNCACHED
     if (newState == DIR_UNCACHED) {
         line->owner = -1;
@@ -458,6 +453,8 @@ void updateDirectoryState(directory_t* directory, unsigned long address, directo
             line->existsInCache[i] = false;
         }
     }
+
+    */
 }
 
 
@@ -504,16 +501,16 @@ void freeInterconnect() {
  * @param address       The memory address to read from.
  */
 void readFromCache(cache_t *cache, unsigned long address, int srcID) {
-    // printf("readFromCache %d\n", srcID);
-    int nodeId = address/NUM_LINES;
-    int index = directoryIndex(address);
+    printf("readFromCache %d\n", srcID);
+    int nodeId = address / (NUM_LINES * (1 << main_B));
+    // int index = directoryIndex(address);
     int setIndex = calculateSetIndex(address, cache->S, cache->B);
     set_t *set = &cache->setList[setIndex];
     line_t *line = findLineInSet(*set, calculateTag(address, cache->S, cache->B));
 
     if (line != NULL && line->valid && line->tag == calculateTag(address, cache->S, cache->B)) {
         // Cache hit
-        // printf("readFromCache Cache HIT: Processor %d reading address %lu\n", cache->processor_id, address);
+        printf("readFromCache Cache HIT: Processor %d reading address %lu\n", cache->processor_id, address);
         cache->hitCount++;
         updateLineUsage(line);  // Update line usage on hit
         line->state = SHARED;
@@ -521,9 +518,9 @@ void readFromCache(cache_t *cache, unsigned long address, int srcID) {
         // Cache miss
 
         if(line !=NULL) {
-            // printf("\nline: %p", (void*)line);
+            printf("\nline: %p", (void*)line);
         }
-        // printf("readFromCache Cache MISS: Processor %d reading address %lu\n", cache->processor_id, address);
+        printf("readFromCache Cache MISS: Processor %d reading address %lu\n", cache->processor_id, address);
         cache->missCount++;
         
         // printf("bringing line into cache\n");
@@ -595,8 +592,8 @@ void writeToCache(cache_t *cache, unsigned long address, int srcId) {
  */
 void fetchFromDirectory(directory_t* directory, unsigned long address, int requestingProcessorId, bool read) {
     int index = directoryIndex(address);
-    directory_entry_t* line = &directory->lines[index];
-    int home_node = address / NUM_LINES;
+    directory_entry_t* line = findDirectoryEntryFromIndex(directory, index);
+    int home_node = address / (NUM_LINES * (1 << main_B));
 
     // Check the state of the directory line
     if (line->state == DIR_EXCLUSIVE_MODIFIED) {
@@ -644,7 +641,7 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
     line->state = DIR_SHARED;
     line->owner = -1; // TODO: should the owner be the newest sharer? 
     
-    line->existsInCache[requestingProcessorId] = true;
+    // line->existsInCache[requestingProcessorId] = true; TODO: FIX THIS LOGIC 
 }
 
 /**

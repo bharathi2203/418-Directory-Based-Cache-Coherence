@@ -16,7 +16,7 @@ unsigned long getCurrentTime() {
  * @param address 
  * @param state 
  */
-void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state) {
+line_t* addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_state state) {
     unsigned long tag = address >> (main_S + main_B);
     line_t *oldestLine = NULL;
     unsigned long oldestTime = ULONG_MAX;
@@ -34,8 +34,9 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
     }
 
     if (oldestLine == NULL) {
-        return;
+        printf("oldestLine is NULL\n");
     }
+
 
     // Evict the oldest line if necessary
     if (oldestLine->valid) {
@@ -52,9 +53,36 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
     oldestLine->isDirty = (state == MODIFIED);
     oldestLine->state = state;
     oldestLine->lastUsed = timer; 
+    oldestLine->processor_id = cache->processor_id;
+    printf("address: %d\n", address);
+    int home_nodeID = address / (NUM_LINES * (1 << main_B)); // TODO: update the home node computation in other 2 branches 
+    node_t* home_node = &interconnect->nodeList[home_nodeID];
+    // int directoryTag = calculateTag(address, home_node.cache->S, home_node.cache->B);
+    printf("home node: %d dir index:%d", home_nodeID, directoryIndex(address));
+    directory_entry_t* entry = findDirectoryEntryFromIndex(home_node->directory, directoryIndex(address));
+    printCache(cache);
+        printf("here %p\n", (void*)entry);
+
+    oldestLine->next = entry->head;
+        printf("here\n");
+
+    entry->head = oldestLine;
+        printf("here\n");
+    return oldestLine;
 }
 
-
+directory_entry_t* findDirectoryEntryFromIndex(directory_t* dir, int dirIndex) {
+    for (int i = 0; i < NUM_DIR_ENTRIES; i++) {
+        printf("here i: %d\n", i);
+        if(dir->lines[i].tag == dirIndex || dir->lines[i].state == DIR_UNCACHED) {
+            printf("here3\n");
+            return &dir->lines[i];
+        }
+    }
+    
+    printf("reaching\n");
+    return NULL;
+}
 /**
  * @brief Function to update the last used time of a line during cache access
  * 
@@ -73,7 +101,7 @@ void updateLineUsage(line_t *line) {
  * @return int 
  */
 int directoryIndex(unsigned long address) {
-   return address % NUM_LINES;
+   return (address >> main_B) % NUM_LINES;
 }
 
 
@@ -151,8 +179,10 @@ directory_t* initializeDirectory(int numLines) {
     // Initialize each line in the directory
     for (int i = 0; i < numLines; i++) {
         dir->lines[i].state = DIR_UNCACHED;
-        memset(dir->lines[i].existsInCache, false, sizeof(bool) * NUM_PROCESSORS);
+        // memset(dir->lines[i].existsInCache, false, sizeof(bool) * NUM_PROCESSORS);
         dir->lines[i].owner = -1;
+        dir->lines[i].tag = 0;
+        dir->lines[i].head = NULL;
     }
     return dir;
 }
@@ -216,7 +246,8 @@ cache_t *initializeCache(unsigned int s, unsigned int e, unsigned int b, int pro
             cache->setList[i].lines[j].isDirty = false;
             cache->setList[i].lines[j].state = INVALID;
             cache->setList[i].lines[j].lastUsed = 0;
-
+            cache->setList[i].lines[j].processor_id = processor_id;
+            cache->setList[i].lines[j].next = NULL;
         }
     }
 
@@ -264,20 +295,35 @@ void freeCache(cache_t *cache) {
  */
 void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState) {
     int index = directoryIndex(address);
-    directory_entry_t* line = &directory->lines[index];
+    directory_entry_t* entry = &directory->lines[index];
 
     // Update the directory entry based on the new state
-    line->state = newState;
-    line->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? cache_id : -1;
+    entry->state = newState;
+    entry->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? cache_id : -1;
 
     // Invalidate other caches if necessary
     if (newState == DIR_EXCLUSIVE_MODIFIED) {
+        /*
         for (int i = 0; i < NUM_PROCESSORS; i++) {
             if (i != cache_id && line->existsInCache[i]) {
                 line->existsInCache[i] = false;
                 sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
             }
         }
+        */
+        line_t *curr_cacheLine = entry->head;
+        line_t *new_head = NULL;
+        while (curr_cacheLine != NULL) {
+            if (curr_cacheLine->processor_id != cache_id) {
+                // remove curr_cacheLine
+                sendInvalidate(cache_id, curr_cacheLine->processor_id, address);
+            }
+            else {
+                new_head = curr_cacheLine;
+                new_head->next = NULL;
+            }
+        }
+        entry->head = new_head;
     }
 }
 
@@ -340,8 +386,8 @@ void printCache(cache_t *cache) {
         printf("Set %lu:\n", i);
         for (unsigned long j = 0; j < cache->E; j++) {
             line_t *line = &cache->setList[i].lines[j];
-            printf("  Line %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d, Last Used: %lu\n", 
-                   j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed);
+            printf("  Line (%p) %lu: Tag: %lx, Valid: %d, Dirty: %d, State: %d, Last Used: %lu, Next: %p\n", 
+                   (void*)line, j, line->tag, line->valid, line->isDirty, line->state, line->lastUsed, (void*)line->next);
         }
     }
 }
