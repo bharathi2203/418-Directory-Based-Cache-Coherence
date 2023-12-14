@@ -637,7 +637,7 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
         // If the line is uncached or shared, fetch it from the memory
         // printf("fetching from another directory, line is shared\n");
         // printf("fetchFromDirectory sendReadData\n");
-        sendAck(home_node, requestingProcessorId, address, ~read);
+        sendAck(home_node, requestingProcessorId, address, read);
     }
 
     // Update the directory entry
@@ -660,10 +660,10 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
  * @param address 
  * @param write  
  */
-void sendAck(int srcId, int destId, unsigned long address, bool write) {
+void sendAck(int srcId, int destId, unsigned long address, bool read) {
     // Create a READ_ACKNOWLEDGE message
     message_t dataMsg = {
-        .type = write ? WRITE_ACKNOWLEDGE : READ_ACKNOWLEDGE,
+        .type = read ? READ_ACKNOWLEDGE : WRITE_ACKNOWLEDGE,
         .sourceId = srcId, // -1 or a specific ID if the directory has an ID
         .destId = destId,
         .address = address
