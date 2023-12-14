@@ -22,7 +22,7 @@
  * @return int 
  */
 int findCacheWithLine(unsigned long address) {
-    int nodeId = address / NUM_PROCESSORS; // Hypothetical way to map address to node ID.
+    int nodeId = address / (NUM_LINES * (1 << main_B)); // Hypothetical way to map address to node ID.
     int lineIndex = directoryIndex(address);
     directory_entry_t* directoryLine = &(interconnect->nodeList[nodeId].directory->lines[lineIndex]);
 

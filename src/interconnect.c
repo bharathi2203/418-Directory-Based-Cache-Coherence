@@ -596,7 +596,7 @@ void writeToCache(cache_t *cache, unsigned long address, int srcId) {
 void fetchFromDirectory(directory_t* directory, unsigned long address, int requestingProcessorId, bool read) {
     int index = directoryIndex(address);
     directory_entry_t* line = &directory->lines[index];
-    int home_node = address / NUM_LINES;
+    int home_node = address / (NUM_LINES * (1 << main_B));
 
     // Check the state of the directory line
     if (line->state == DIR_EXCLUSIVE_MODIFIED) {
