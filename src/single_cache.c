@@ -266,7 +266,7 @@ void fetchDataFromDirectoryOrCache(cache_t *cache, unsigned long address) {
             message_t readRequest;
             readRequest.type = READ_REQUEST;
             readRequest.sourceId = cache->processor_id;
-            readRequest.destId = address / NUM_PROCESSORS;
+            readRequest.destId = (address >> main_B) / NUM_LINES;
             readRequest.address = address;
             enqueue(interconnect->outgoingQueue, readRequest.type, readRequest.sourceId, readRequest.destId, readRequest.address);
         }
