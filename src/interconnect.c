@@ -157,6 +157,7 @@ void processMessageQueue() {
                     break;
                 case READ_ACKNOWLEDGE:
                     // Update cache line state to SHARED
+                    printf("read ack destID: %d, srcId: %d\n", msg->destId, msg->sourceId);
                     updateCacheLineState(cache, msg->address, SHARED);
                     interconnect_stats->totalReadAcks += 1;
                     break;
@@ -226,7 +227,7 @@ void handleReadRequest(message_t msg) {
             entry->state = DIR_SHARED;
         } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
             // The line is currently exclusively modified in one cache.
-
+ 
             // Update the directory to shared state
             entry->state = DIR_SHARED;
             entry->owner = -1; // No single owner anymore
@@ -254,28 +255,32 @@ void handleReadRequest(message_t msg) {
  */
  // TODO: what happens if 
 void handleWriteRequest(message_t msg) {
-    /*
-    // Locate the directory for the destination node
-    directory_t* dir = interconnect->nodeList[msg.destId].directory;
-    int index = directoryIndex(msg.address);
-    directory_entry_t* entry = &dir->lines[index];
-
     if(msg.destId == msg.sourceId) { 
+        // Locate the directory for the destination node
+        directory_t* dir = interconnect->nodeList[msg.destId].directory;
+        directory_entry_t* entry = findDirectoryEntryFromIndex(dir, directoryIndex(msg.address));
+
         // Update the directory entry for the write request
         if (entry->state != DIR_UNCACHED) {
             // Invalidate other caches if necessary
-            for (int i = 0; i < NUM_PROCESSORS; i++) {
-                if (i != msg.sourceId && entry->existsInCache[i]) {
-                    // Invalidate other caches
-                    sendInvalidate(msg.sourceId, i, msg.address);
-                    entry->existsInCache[i] = false;
+            line_t *curr_cacheLine = entry->head;
+            line_t *new_head = NULL;
+            while (curr_cacheLine != NULL) {
+                if (curr_cacheLine->processor_id != msg.destId) {
+                    // remove curr_cacheLine
+                    sendInvalidate(msg.destId, curr_cacheLine->processor_id, msg.address);
+                }
+                else {
+                    new_head = curr_cacheLine;
+                    new_head->next = NULL;
                 }
             }
+            entry->head = new_head;
         }
         // Update the directory to exclusive modified state
         entry->state = DIR_EXCLUSIVE_MODIFIED;
         entry->owner = msg.sourceId;
-        entry->existsInCache[msg.sourceId] = true;
+        // entry->existsInCache[msg.sourceId] = true;
 
         // Cache Updates 
         cache_t *cache = interconnect->nodeList[msg.sourceId].cache;
@@ -310,9 +315,7 @@ void handleWriteRequest(message_t msg) {
 
         // Enqueue the message to the outgoing queue
         enqueue(interconnect->outgoingQueue, writeMsg.type, writeMsg.sourceId, writeMsg.destId, writeMsg.address);
-
     }
-    */
 }
 
 /**
@@ -527,6 +530,7 @@ void readFromCache(cache_t *cache, unsigned long address, int srcID) {
         addLineToCacheSet(cache, set, address, SHARED);
         
     }
+    printf("calling fetchFromDir from readFromCache\n");
     fetchFromDirectory(interconnect->nodeList[srcID].directory, address, cache->processor_id, true);
 }
 
@@ -634,7 +638,8 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
         // If the line is uncached or shared, fetch it from the memory
         // printf("fetching from another directory, line is shared\n");
         // printf("fetchFromDirectory sendReadData\n");
-        sendAck(home_node, requestingProcessorId, address, ~read);
+        printf("\n calling sendAck: home_node: %d, reqProcessorID: %d, read: %d", home_node, requestingProcessorId, read);
+        sendAck(requestingProcessorId, home_node, address, read);
     }
 
     // Update the directory entry
@@ -642,6 +647,7 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
     line->owner = -1; // TODO: should the owner be the newest sharer? 
     
     // line->existsInCache[requestingProcessorId] = true; TODO: FIX THIS LOGIC 
+    // add line to requesting processors linked list
 }
 
 /**
@@ -657,10 +663,11 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
  * @param address 
  * @param write  
  */
-void sendAck(int srcId, int destId, unsigned long address, bool write) {
+void sendAck(int srcId, int destId, unsigned long address, bool read) {
+    printf("\n destID: %d, srcID: %d, read: %d\n", destId, srcId, read);
     // Create a READ_ACKNOWLEDGE message
     message_t dataMsg = {
-        .type = write ? WRITE_ACKNOWLEDGE : READ_ACKNOWLEDGE,
+        .type = read ? READ_ACKNOWLEDGE : WRITE_ACKNOWLEDGE,
         .sourceId = srcId, // -1 or a specific ID if the directory has an ID
         .destId = destId,
         .address = address
