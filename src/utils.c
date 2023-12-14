@@ -44,6 +44,17 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
         if (oldestLine->isDirty) {
             cache->dirtyEvictionCount++;
         }
+
+        // update the owner if the evicted line was an owner
+        /*
+        if (oldestLine->state == MODIFIED) {
+            int home_node = (address >> main_B) / NUM_LINES;
+            directory_t *homeDir = &interconnect->nodeList[home_node].directory;
+            int dirIndex = directoryIndex(address);
+            homeDir->lines[dirIndex].state = DIR_SHARED;
+            homeDir->lines[dirIndex].owner = -1;
+        }
+        */
     }
 
     // Update the line with new data
@@ -62,7 +73,6 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
  * @param line 
  */
 void updateLineUsage(line_t *line) {
-    printf("timer: %d\n", timer);
     line->lastUsed = timer; 
 }
 

@@ -103,7 +103,6 @@ void processMessageQueue() {
                 case INVALIDATE:
                     // Handle invalidate requests
                     handleInvalidateRequest(*msg);
-                    printf("\n invalidate %lx\n", msg->address);
                     interconnect_stats->totalInvalidations += 1;
                     break;
                 case READ_ACKNOWLEDGE:
@@ -152,7 +151,6 @@ void processMessageQueue() {
                 case INVALIDATE:
                     // Invalidate the cache line
                     invalidateCacheLine(cache, msg->address);
-                    printf("\n invalidate %lx\n", msg->address);
                     interconnect_stats->totalInvalidations += 1;
                     break;
                 case READ_ACKNOWLEDGE:
@@ -304,7 +302,6 @@ void handleWriteRequest(message_t msg) {
             // fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
             addLineToCacheSet(cache, &cache->setList[setIndex], msg.address, MODIFIED);
         }
-        // because directory says it's uncached, we don't need to do anything to any other caches?        
 
     }
     else {
@@ -317,7 +314,6 @@ void handleWriteRequest(message_t msg) {
 
         // Enqueue the message to the outgoing queue
         enqueue(interconnect->outgoingQueue, writeMsg.type, writeMsg.sourceId, writeMsg.destId, writeMsg.address);
-
     }
     
 }
@@ -504,7 +500,6 @@ void freeInterconnect() {
  * @param address       The memory address to read from.
  */
 void readFromCache(cache_t *cache, unsigned long address, int srcID) {
-    // printf("readFromCache %d\n", srcID);
     int nodeId = address/NUM_LINES;
     int index = directoryIndex(address);
     int setIndex = calculateSetIndex(address, cache->S, cache->B);
@@ -519,10 +514,6 @@ void readFromCache(cache_t *cache, unsigned long address, int srcID) {
         line->state = SHARED;
     } else {
         // Cache miss
-
-        if(line !=NULL) {
-            // printf("\nline: %p", (void*)line);
-        }
         // printf("readFromCache Cache MISS: Processor %d reading address %lu\n", cache->processor_id, address);
         cache->missCount++;
         
@@ -602,41 +593,37 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
     if (line->state == DIR_EXCLUSIVE_MODIFIED) {
         // If the line is exclusively modified, we need to fetch it from the owning cache
         int owner = line->owner;
+        // printf("\n spot 2: address: %lx\n\n", address);
         if (owner != -1) {
-            // Invalidate the line in the owner's cache
-            // printf("\n spot 3: %lu", address);
-            // sendInvalidate(nodeID, owner, address); // TODO: why do you invalidate the owner? 
-
             // Simulate transferring the line to the requesting cache
             sendFetch(requestingProcessorId, owner, address);
             sendFetch(home_node, owner, address); // update home node too 
-
 
             // set each cache's state to shared for this line
             cache_t* cache = interconnect->nodeList[owner].cache;
             int setIndex = calculateSetIndex(address, cache->S, cache->B);
             unsigned long tag = calculateTag(address, cache->S, cache->B);
             line_t* ownerCacheLine = findLineInSet(interconnect->nodeList[owner].cache->setList[setIndex], tag);
+            // printCache(cache);
+            // printf("\n spot 3: %lu\n\n", address);
             ownerCacheLine->state = SHARED;
+            
             cache = interconnect->nodeList[requestingProcessorId].cache;
             line_t* requestorCacheLine = findLineInSet(interconnect->nodeList[requestingProcessorId].cache->setList[setIndex], tag);
             requestorCacheLine->state = (read) ? SHARED : MODIFIED;
+            
             cache = interconnect->nodeList[home_node].cache;
             line_t* homeCacheLine = findLineInSet(interconnect->nodeList[home_node].cache->setList[setIndex], tag);
             if (homeCacheLine != NULL) {
                 homeCacheLine->state = SHARED;
             }
-            
             // printf("\n home_node: %d, owner: %d, reqProcessorId: %d", home_node, owner, requestingProcessorId);
             
-
             // update the requestor directory 
             // updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState)
         }
     } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
-        // If the line is uncached or shared, fetch it from the memory
-        // printf("fetching from another directory, line is shared\n");
-        // printf("fetchFromDirectory sendReadData\n");
+        // If the line is uncached or shared, fetch it from the memory        
         sendAck(home_node, requestingProcessorId, address, read);
     }
 
