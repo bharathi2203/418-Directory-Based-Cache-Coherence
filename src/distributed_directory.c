@@ -59,7 +59,7 @@ void print_interconnect_stats() {
     printf("\ninterconnect_stats->totalStateUpdates: %d", interconnect_stats->totalStateUpdates);
     printf("\ninterconnect_stats->totalReadAcks: %d", interconnect_stats->totalReadAcks);
     printf("\ninterconnect_stats->totalWriteAcks: %d ", interconnect_stats->totalWriteAcks);
-    printf("\ninterconnect_stats->totalFetchRequests: %d", interconnect_stats->totalFetchRequests);
+    printf("\ninterconnect_stats->totalFetchRequests: %d\n\n", interconnect_stats->totalFetchRequests);
 } 
 
 /**
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
         // print directories
         
     }
-
+    
     for(int i = 0; i < NUM_PROCESSORS; i++) {
             printf("\nnode %d\n", i);
             directory_t* dir = interconnect->nodeList[i].directory;
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
                 
                 directory_entry_t entry = dir->lines[j];
                 if(entry.state != DIR_UNCACHED) {
-                    printf("\ndirectory entry with owner: %d, state: %d\n", entry.owner, entry.state);
+                    printf("\ndirectory entry with tag: %d, owner: %d, state: %d\n", entry.tag, entry.owner, entry.state);
                     line_t* temp = entry.head;
                     while(temp != NULL) {
                         printf("cache line: %p, cacheLine->processor_id: %d\n", temp, temp->processor_id);
@@ -130,6 +130,7 @@ int main(int argc, char *argv[]) {
             printCache(interconnect->nodeList[i].cache);
             makeSummary(interconnect->nodeList[i].cache);
     }
+    
     print_interconnect_stats();
     // Cleanup and close the file
     fclose(traceFile);

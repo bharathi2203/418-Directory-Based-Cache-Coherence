@@ -54,33 +54,30 @@ line_t* addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, blo
     oldestLine->state = state;
     oldestLine->lastUsed = timer; 
     oldestLine->processor_id = cache->processor_id;
-    printf("address: %d\n", address);
+    // printf("address: %d\n", address);
     int home_nodeID = address / (NUM_LINES * (1 << main_B)); // TODO: update the home node computation in other 2 branches 
     node_t* home_node = &interconnect->nodeList[home_nodeID];
     // int directoryTag = calculateTag(address, home_node.cache->S, home_node.cache->B);
-    printf("home node: %d dir index:%d", home_nodeID, directoryIndex(address));
+    // printf("home node: %d dir index:%d", home_nodeID, directoryIndex(address));
     directory_entry_t* entry = findDirectoryEntryFromIndex(home_node->directory, directoryIndex(address));
-    printCache(cache);
-        printf("here %p\n", (void*)entry);
-
     oldestLine->next = entry->head;
-        printf("here\n");
-
     entry->head = oldestLine;
-        printf("here\n");
     return oldestLine;
 }
 
+/**
+ * @brief Find the directory entry in a directory given the address' tag.
+ * 
+ * @param dir 
+ * @param dirIndex 
+ * @return directory_entry_t* 
+ */
 directory_entry_t* findDirectoryEntryFromIndex(directory_t* dir, int dirIndex) {
     for (int i = 0; i < NUM_DIR_ENTRIES; i++) {
-        printf("here i: %d\n", i);
         if(dir->lines[i].tag == dirIndex || dir->lines[i].state == DIR_UNCACHED) {
-            printf("here3\n");
             return &dir->lines[i];
         }
     }
-    
-    printf("reaching\n");
     return NULL;
 }
 /**
@@ -294,23 +291,16 @@ void freeCache(cache_t *cache) {
  * @param newState 
  */
 void updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState) {
-    int index = directoryIndex(address);
-    directory_entry_t* entry = &directory->lines[index];
+    int dirIndex = directoryIndex(address);
+    directory_entry_t* entry = findDirectoryEntryFromIndex(directory, dirIndex);
 
     // Update the directory entry based on the new state
     entry->state = newState;
     entry->owner = (newState == DIR_EXCLUSIVE_MODIFIED) ? cache_id : -1;
+    entry->tag = directoryIndex(address);
 
     // Invalidate other caches if necessary
     if (newState == DIR_EXCLUSIVE_MODIFIED) {
-        /*
-        for (int i = 0; i < NUM_PROCESSORS; i++) {
-            if (i != cache_id && line->existsInCache[i]) {
-                line->existsInCache[i] = false;
-                sendInvalidate(cache_id, i, address); // sendInvalidate(int srcId, int destId, unsigned long address)
-            }
-        }
-        */
         line_t *curr_cacheLine = entry->head;
         line_t *new_head = NULL;
         while (curr_cacheLine != NULL) {
@@ -322,6 +312,7 @@ void updateDirectory(directory_t* directory, unsigned long address, int cache_id
                 new_head = curr_cacheLine;
                 new_head->next = NULL;
             }
+            curr_cacheLine = curr_cacheLine->next;
         }
         entry->head = new_head;
     }

@@ -225,10 +225,12 @@ void handleReadRequest(message_t msg) {
         // If the line is uncached or already shared, simply update presence bits
         if (entry->state == DIR_UNCACHED || entry->state == DIR_SHARED) {
             entry->state = DIR_SHARED;
+            entry->tag = directoryIndex(msg.address);
         } else if (entry->state == DIR_EXCLUSIVE_MODIFIED) {
             // The line is currently exclusively modified in one cache.
  
             // Update the directory to shared state
+            entry->tag = directoryIndex(msg.address);
             entry->state = DIR_SHARED;
             entry->owner = -1; // No single owner anymore
         }
@@ -253,7 +255,6 @@ void handleReadRequest(message_t msg) {
  * @param interconnect 
  * @param msg 
  */
- // TODO: what happens if 
 void handleWriteRequest(message_t msg) {
     if(msg.destId == msg.sourceId) { 
         // Locate the directory for the destination node
@@ -274,12 +275,15 @@ void handleWriteRequest(message_t msg) {
                     new_head = curr_cacheLine;
                     new_head->next = NULL;
                 }
+                curr_cacheLine = curr_cacheLine->next;
             }
             entry->head = new_head;
+            entry->tag = directoryIndex(msg.address);
         }
         // Update the directory to exclusive modified state
         entry->state = DIR_EXCLUSIVE_MODIFIED;
         entry->owner = msg.sourceId;
+        entry->tag = directoryIndex(msg.address);
         // entry->existsInCache[msg.sourceId] = true;
 
         // Cache Updates 
@@ -301,9 +305,7 @@ void handleWriteRequest(message_t msg) {
             cache->missCount++;
             // fetchFromDirectory(interconnect->nodeList[cache->processor_id].directory, address, cache->processor_id);
             addLineToCacheSet(cache, &cache->setList[setIndex], msg.address, MODIFIED);
-        }
-        // because directory says it's uncached, we don't need to do anything to any other caches?        
-
+        }       
     }
     else {
         message_t writeMsg = {
@@ -425,8 +427,6 @@ bool updateCacheLineState(cache_t *cache, unsigned long address, block_state new
             break;
         }
     }
-
-    // Additional logic for directory update
 
     return lineFound;
 }
@@ -570,11 +570,13 @@ void writeToCache(cache_t *cache, unsigned long address, int srcId) {
         // printf("writeToCache Cache MISS: Processor %d writing to address %lu\n", cache->processor_id, address);
         cache->missCount++;
         addLineToCacheSet(cache, set, address, MODIFIED);
+        
     }
     // Notify the directory that this cache now has a modified version of the line
     fetchFromDirectory(interconnect->nodeList[srcId].directory, address, cache->processor_id, false);
     // void fetchFromDirectory(directory_t* directory, unsigned long address, int requestingProcessorId) {
     // printf("\n update dir: srcID: %d", srcId);
+    
     updateDirectory(interconnect->nodeList[srcId].directory, address, cache->processor_id, DIR_EXCLUSIVE_MODIFIED);
 }
 
@@ -604,14 +606,9 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
         // If the line is exclusively modified, we need to fetch it from the owning cache
         int owner = line->owner;
         if (owner != -1) {
-            // Invalidate the line in the owner's cache
-            // printf("\n spot 3: %lu", address);
-            // sendInvalidate(nodeID, owner, address); // TODO: why do you invalidate the owner? 
-
             // Simulate transferring the line to the requesting cache
             sendFetch(requestingProcessorId, owner, address);
             sendFetch(home_node, owner, address); // update home node too 
-
 
             // set each cache's state to shared for this line
             cache_t* cache = interconnect->nodeList[owner].cache;
@@ -628,26 +625,29 @@ void fetchFromDirectory(directory_t* directory, unsigned long address, int reque
                 homeCacheLine->state = SHARED;
             }
             
-            // printf("\n home_node: %d, owner: %d, reqProcessorId: %d", home_node, owner, requestingProcessorId);
-            
-
             // update the requestor directory 
             // updateDirectory(directory_t* directory, unsigned long address, int cache_id, directory_state newState)
         }
     } else if (line->state == DIR_UNCACHED || line->state == DIR_SHARED) {
         // If the line is uncached or shared, fetch it from the memory
-        // printf("fetching from another directory, line is shared\n");
-        // printf("fetchFromDirectory sendReadData\n");
-        printf("\n calling sendAck: home_node: %d, reqProcessorID: %d, read: %d", home_node, requestingProcessorId, read);
         sendAck(requestingProcessorId, home_node, address, read);
     }
 
     // Update the directory entry
     line->state = DIR_SHARED;
     line->owner = -1; // TODO: should the owner be the newest sharer? 
+    line->tag = directoryIndex(address);
     
     // line->existsInCache[requestingProcessorId] = true; TODO: FIX THIS LOGIC 
-    // add line to requesting processors linked list
+    // add line to requesting processors linked list if not already present 
+    cache_t *requestingCache = interconnect->nodeList[requestingProcessorId].cache;
+    int reqSetIndex = calculateSetIndex(address, requestingCache->S, requestingCache->B);
+    unsigned long reqTag = calculateTag(address, requestingCache->S, requestingCache->B);
+    line_t* requestingCacheLine = findLineInSet(requestingCache->setList[reqSetIndex], reqTag);
+    if (line->head == NULL) {
+        line->head = requestingCacheLine;
+        requestingCacheLine->next = NULL;
+    }
 }
 
 /**
