@@ -24,7 +24,7 @@ void processTraceLine(int processorId, char operation, unsigned long address) {
 
     message_t msg;
     // Convert the address to the local node's index, assuming the address includes the node information
-    int localNodeIndex = address / NUM_LINES;
+    int localNodeIndex = address / (NUM_LINES * (1 << main_B));
     switch (operation) {
         case 'R':
             // Send a read request to the interconnect queue

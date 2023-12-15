@@ -23,7 +23,7 @@ void readFromCache(cache_t *cache, unsigned long address, int srcID);
 void writeToCache(cache_t *cache, unsigned long address, int srcID);
 void fetchFromDirectory(directory_t* directory, unsigned long address, int requestingProcessorId, bool read);
 void sendFetch(int srcId, int destId, unsigned long address);
-void sendAck(int srcId, int destId, unsigned long address, bool write);
+void sendAck(int srcId, int destId, unsigned long address, bool read);
 void freeDirectory(directory_t* dir);
 void updateDirectoryState(directory_t* directory, unsigned long address, directory_state newState);
 bool updateCacheLineState(cache_t *cache, unsigned long address, block_state newState);
