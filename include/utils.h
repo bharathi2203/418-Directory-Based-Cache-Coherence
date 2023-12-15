@@ -13,7 +13,7 @@
 #include <string.h>
 #include <limits.h>
 
-#define NUM_PROCESSORS 4
+#define NUM_PROCESSORS 256
 #define NUM_LINES 256
 
 #define main_S 2
@@ -26,7 +26,7 @@
 /** @brief Number of clock cycles for miss */
 #define MISS_CYCLES 100
 
-#define LIM_PTR_DIR_ENTRIES 2
+#define LIM_PTR_DIR_ENTRIES 8
 /**
  * @brief 
  * 

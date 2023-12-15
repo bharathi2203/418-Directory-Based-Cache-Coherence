@@ -56,7 +56,6 @@ void print_interconnect_stats() {
     printf("\ninterconnect_stats->totalReadRequests: %d", interconnect_stats->totalReadRequests);
     printf("\ninterconnect_stats->totalWriteRequests: %d", interconnect_stats->totalWriteRequests);
     printf("\ninterconnect_stats->totalInvalidations: %d", interconnect_stats->totalInvalidations);
-    printf("\ninterconnect_stats->totalStateUpdates: %d", interconnect_stats->totalStateUpdates);
     printf("\ninterconnect_stats->totalReadAcks: %d", interconnect_stats->totalReadAcks);
     printf("\ninterconnect_stats->totalWriteAcks: %d ", interconnect_stats->totalWriteAcks);
     printf("\ninterconnect_stats->totalFetchRequests: %d", interconnect_stats->totalFetchRequests);
@@ -111,7 +110,7 @@ int main(int argc, char *argv[]) {
         
     }
 
-    for(int i = 0; i < NUM_PROCESSORS; i++) {
+    for(int i = 0; i < 4; i++) {
             printf("\nnode %d\n", i);
             directory_t* dir = interconnect->nodeList[i].directory;
             for(int j = 0; j < NUM_LINES; j++) {
@@ -128,7 +127,9 @@ int main(int argc, char *argv[]) {
             printf("\n \nprocessor id: %d\n", i);
             printCache(interconnect->nodeList[i].cache);
             makeSummary(interconnect->nodeList[i].cache);
+    
     }
+    
     print_interconnect_stats();
     // Cleanup and close the file
     fclose(traceFile);

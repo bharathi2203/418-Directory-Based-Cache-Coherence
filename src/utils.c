@@ -43,6 +43,18 @@ void addLineToCacheSet(cache_t *cache, set_t *set, unsigned long address, block_
         cache->evictionCount++;
         if (oldestLine->isDirty) {
             cache->dirtyEvictionCount++;
+
+            int home_node = address  / (NUM_LINES * (1 << main_B));
+            directory_t *homeDir = interconnect->nodeList[home_node].directory;
+            int dirIndex = directoryIndex(address);
+            homeDir->lines[dirIndex].existsInCache[homeDir->lines[dirIndex].owner] = -1;
+            homeDir->lines[dirIndex].owner = -1;
+        }
+        else {
+            int home_node = address  / (NUM_LINES * (1 << main_B));
+            directory_t *homeDir = interconnect->nodeList[home_node].directory;
+            int dirIndex = directoryIndex(address);
+            homeDir->lines[dirIndex].existsInCache[homeDir->lines[dirIndex].owner] = -1;
         }
     }
 
@@ -390,6 +402,11 @@ bool lineInProcCache(directory_entry_t* entry, int procId) {
 }
 
 void addProcToDirEntry(directory_entry_t* entry, int procId, unsigned long address) {
+    for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
+        if (entry->existsInCache[i] == procId) {
+            return;
+        }
+    }
     for (int i = 0; i < LIM_PTR_DIR_ENTRIES; i++) {
         if (entry->existsInCache[i] == -1) {
             entry->existsInCache[i] = procId;
